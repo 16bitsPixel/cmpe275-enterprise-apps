@@ -31,14 +31,23 @@ int main() {
     
     // go through all lines
     while (getline(in, line)) {
-        // create a taxiTripRecord object
-        taxiTripRecord record;
-
         // parse the line and populate the taxiTripRecord object
-        cout << line << endl;
+        taxiTripRecord record = taxiTripRecord::parseFromCSV(line);
 
-        // add the taxiTripRecord object to the vector
+        // push onto records list
         records.push_back(record);
+    }
+
+    // close the file
+    in.close();
+
+    // print out a test record
+    if (!records.empty()) {
+        cout << "Vendor ID: " << records[0].vendorId << endl;
+        cout << "Pickup Datetime: " << records[0].pickupDatetime << endl;
+        cout << "Dropoff Datetime: " << records[0].dropoffDatetime << endl;
+        cout << "Passenger Count: " << records[0].passengerCount << endl;
+        cout << "Trip Distance: " << records[0].tripDistance << endl;
     }
 
     return 0;
