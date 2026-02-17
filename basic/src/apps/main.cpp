@@ -29,6 +29,28 @@ int main() {
     }
     */
     
+    // skip the header line
+    if (!getline(in, line)) {
+        cerr << "Failed to read header line" << endl;
+        return 1;
+    }
+
+    // print header
+    // cout << "Header: " << line << endl;
+
+    // get one line to test parsing
+    /*
+    if (getline(in, line)) {
+        cout << "Testing parse of line: " << line << endl;
+        taxiTripRecord record = taxiTripRecord::parseFromCSV(line);
+        cout << "Vendor ID: " << record.vendorId << endl;
+        cout << "Pickup Datetime: " << record.pickupDatetime << endl;
+        cout << "Dropoff Datetime: " << record.dropoffDatetime << endl;
+        cout << "Passenger Count: " << record.passengerCount << endl;
+        cout << "Trip Distance: " << record.tripDistance << endl;
+    }
+    */
+
     // go through all lines
     while (getline(in, line)) {
         // parse the line and populate the taxiTripRecord object
