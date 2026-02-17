@@ -13,6 +13,6 @@ set(BUILD_LIBRARIES stuff ${Boost_LIBRARIES} ${SOCKET_LIBRARY} pthread)
 
 
 # app targets
-add_executable(hello apps/hello.cpp)
-target_link_libraries(hello ${BUILD_LIBRARIES})
+add_executable(mini1 apps/main.cpp)
+target_link_libraries(mini1 ${BUILD_LIBRARIES})
 

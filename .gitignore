@@ -1,1 +1,5 @@
 basic/data/
+build/
+.vscode/
+.DS_Store
+basic/.DS_Store
