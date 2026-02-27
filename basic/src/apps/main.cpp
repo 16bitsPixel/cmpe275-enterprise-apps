@@ -1,76 +1,46 @@
-// imports
 #include <iostream>
-#include <vector>
-#include <fstream>
 #include <string>
+#include <memory>
 
-using namespace std;
+#include "query/AndPredicate.hpp"
+#include "query/PickupTimeRangePredicate.hpp"
+#include "query/TruePredicate.hpp"
+#include "dataset/TaxiTripDataset.hpp"
+#include "metrics/BenchmarkRunner.hpp"
 
-// header files
-#include "taxiTripRecord.hpp"
+int main()
+{
+    // For now: run only ONE CSV file (quick test while logic is still evolving)
+    const std::string csv_file_path =
+        "../basic/data/subset/yellow_tripdata_2020-01.csv";
 
-int main() {
-    // create vector of taxiTripRecord objects
-    vector<taxiTripRecord> records;
+    // Later: switch to full directory , 30 files → full dataset)
+    // const std::string dir_path = "../basic/data/subset";
 
-    // open a single file using C++ streams
-    ifstream in("../../basic/data/2020_Yellow_Taxi_Trip_Data_20260215.csv");
-    if (!in.is_open()) {
-        cerr << "Failed to open file" << endl;
-        return 1;
-    }
+    TaxiTripDataset dataset;
+    BenchmarkRunner runner(dataset);
 
-    // read the file line by line and create taxiTripRecord objects
-    string line;
+    // Baseline query: match all
+    std::cout << "\n--- Baseline (match all) ---\n";
+    TruePredicate matchAll;
 
-    /* print one line to test
-    if (getline(in, line)) {
-        cout << line << endl;
-    }
-    */
-    
-    // skip the header line
-    if (!getline(in, line)) {
-        cerr << "Failed to read header line" << endl;
-        return 1;
-    }
+    // Single file benchmark
+    runner.runOnceAndPrintFile(csv_file_path, matchAll);
 
-    // print header
-    // cout << "Header: " << line << endl;
+    // Filtered query: pickup time range
 
-    // get one line to test parsing
-    /*
-    if (getline(in, line)) {
-        cout << "Testing parse of line: " << line << endl;
-        taxiTripRecord record = taxiTripRecord::parseFromCSV(line);
-        cout << "Vendor ID: " << record.vendorId << endl;
-        cout << "Pickup Datetime: " << record.pickupDatetime << endl;
-        cout << "Dropoff Datetime: " << record.dropoffDatetime << endl;
-        cout << "Passenger Count: " << record.passengerCount << endl;
-        cout << "Trip Distance: " << record.tripDistance << endl;
-    }
-    */
+    std::cout << "\n--- Filtered (pickup time range) ---\n";
 
-    // go through all lines
-    while (getline(in, line)) {
-        // parse the line and populate the taxiTripRecord object
-        taxiTripRecord record = taxiTripRecord::parseFromCSV(line);
+    auto timePredicate = std::make_shared<PickupTimeRangePredicate>(
+        1577836800000LL, // start
+        1577923199000LL  // end
+    );
 
-        // push onto records list
-        records.push_back(record);
-    }
+    AndPredicate query;
+    query.add(timePredicate);
 
-    // close the file
-    in.close();
-
-    // print out a test record
-    if (!records.empty()) {
-        cout << "Vendor ID: " << records[0].vendorId << endl;
-        cout << "Pickup Datetime: " << records[0].pickupDatetime << endl;
-        cout << "Dropoff Datetime: " << records[0].dropoffDatetime << endl;
-        cout << "Passenger Count: " << records[0].passengerCount << endl;
-        cout << "Trip Distance: " << records[0].tripDistance << endl;
-    }
+    // Single file benchmark
+    runner.runOnceAndPrintFile(csv_file_path, query);
 
     return 0;
 }
