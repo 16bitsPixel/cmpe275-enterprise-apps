@@ -1,76 +1,62 @@
 // imports
 #include <iostream>
 #include <vector>
-#include <fstream>
 #include <string>
+#include <chrono>
 
 using namespace std;
 
 // header files
-#include "taxiTripRecord.hpp"
+#include "csvReader.hpp"
+#include "taxiTripParser.hpp"
+#include "taxiTripStore.hpp"
 
 int main() {
-    // create vector of taxiTripRecord objects
-    vector<taxiTripRecord> records;
+    // turn off stdin
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
 
-    // open a single file using C++ streams
-    ifstream in("../../basic/data/2020_Yellow_Taxi_Trip_Data_20260215.csv");
-    if (!in.is_open()) {
-        cerr << "Failed to open file" << endl;
+    CSVReader reader("../../basic/data/2020_Yellow_Taxi_Trip_Data_20260215.csv");
+    if (!reader.isOpen()) {
+        cerr << "Failed to open CSV file." << endl;
         return 1;
     }
 
-    // read the file line by line and create taxiTripRecord objects
-    string line;
-
-    /* print one line to test
-    if (getline(in, line)) {
-        cout << line << endl;
-    }
-    */
-    
-    // skip the header line
-    if (!getline(in, line)) {
-        cerr << "Failed to read header line" << endl;
+    if (!reader.readHeader()) {
+        cerr << "Failed to read CSV header." << endl;
         return 1;
     }
 
-    // print header
-    // cout << "Header: " << line << endl;
+    // build indices once
+    TaxiTripParser::ColumnIndex idx = TaxiTripParser::buildColumnIndex(reader.getHeaderMap());
 
-    // get one line to test parsing
-    /*
-    if (getline(in, line)) {
-        cout << "Testing parse of line: " << line << endl;
-        taxiTripRecord record = taxiTripRecord::parseFromCSV(line);
-        cout << "Vendor ID: " << record.vendorId << endl;
-        cout << "Pickup Datetime: " << record.pickupDatetime << endl;
-        cout << "Dropoff Datetime: " << record.dropoffDatetime << endl;
-        cout << "Passenger Count: " << record.passengerCount << endl;
-        cout << "Trip Distance: " << record.tripDistance << endl;
-    }
-    */
+    // create store and buffer for columns
+    TaxiTripStore store;
+    vector<string> cols;
+    cols.reserve(32);
 
-    // go through all lines
-    while (getline(in, line)) {
-        // parse the line and populate the taxiTripRecord object
-        taxiTripRecord record = taxiTripRecord::parseFromCSV(line);
+    // start a clock to measure loading time
+    using clock = chrono::steady_clock;
+    auto startTime = clock::now();
 
-        // push onto records list
-        records.push_back(record);
+    // read each row, parse into a record, and add to the store
+    while (reader.readRow(cols)) {
+        try {
+            TaxiTripRecord record = TaxiTripParser::parseRow(cols, idx);
+            store.addRecord(record);
+        } catch (const exception& e) {
+            cerr << "Error parsing row: " << e.what() << endl;
+        }
     }
 
-    // close the file
-    in.close();
+    auto endTime = clock::now();
+    auto duration = chrono::duration_cast<chrono::milliseconds>(endTime - startTime);
+    cout << "Total records loaded: " << store.size() << endl;
+    cout << "Time taken: " << duration.count() << " milliseconds" << endl;
+    cout << "Average time per rows: " << (store.size() / duration.count()) << " milliseconds" << endl << endl;
 
-    // print out a test record
-    if (!records.empty()) {
-        cout << "Vendor ID: " << records[0].vendorId << endl;
-        cout << "Pickup Datetime: " << records[0].pickupDatetime << endl;
-        cout << "Dropoff Datetime: " << records[0].dropoffDatetime << endl;
-        cout << "Passenger Count: " << records[0].passengerCount << endl;
-        cout << "Trip Distance: " << records[0].tripDistance << endl;
-    }
+    // print to test
+    store.printFirstRecord();
 
     return 0;
 }
