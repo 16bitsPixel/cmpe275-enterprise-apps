@@ -13,6 +13,7 @@ set(BUILD_LIBRARIES stuff ${Boost_LIBRARIES} ${SOCKET_LIBRARY} pthread)
 
 
 # app targets
-add_executable(mini1 apps/main.cpp apps/csvReader.cpp apps/taxiTripParser.cpp apps/taxiTripStore.cpp)
+add_executable(mini1 apps/main.cpp apps/csvReader.cpp apps/taxiTripParser.cpp apps/taxiTripStore.cpp apps/taxiTripQuerySpec.cpp)
 target_link_libraries(mini1 ${BUILD_LIBRARIES})
 
+target_compile_features(mini1 PRIVATE cxx_std_17)

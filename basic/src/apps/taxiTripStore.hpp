@@ -21,6 +21,9 @@ class TaxiTripStore {
 
         // print a record
         void printFirstRecord() const;
+
+        // return all records
+        const vector<TaxiTripRecord>& getRecords() const { return records; }
 };
 
 #endif
