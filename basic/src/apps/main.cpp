@@ -1,4 +1,5 @@
-// imports
+
+// existing version of loading the dataset into memory using CSV reader + taxitrip store.
 #include <iostream>
 #include <vector>
 #include <string>
@@ -12,19 +13,22 @@ using namespace std;
 #include "taxiTripStore.hpp"
 #include "taxiTripQuerySpec.hpp"
 
-int main() {
+int main()
+{
     // turn off stdin
     ios::sync_with_stdio(false);
     cin.tie(nullptr);
 
     // CSVReader reader("../../basic/data/2020_Yellow_Taxi_Trip_Data_20260215.csv");
     CSVReader reader = CSVReader::fromDirectory("../../basic/data/");
-    if (!reader.isOpen()) {
+    if (!reader.isOpen())
+    {
         cerr << "Failed to open CSV file." << endl;
         return 1;
     }
 
-    if (!reader.readHeader()) {
+    if (!reader.readHeader())
+    {
         cerr << "Failed to read CSV header." << endl;
         return 1;
     }
@@ -42,11 +46,19 @@ int main() {
     auto startTime = clock::now();
 
     // read each row, parse into a record, and add to the store
-    while (reader.readRow(cols)) {
-        try {
-            TaxiTripRecord record = TaxiTripParser::parseRow(cols, idx);
-            store.addRecord(record);
-        } catch (const exception& e) {
+    while (reader.readRow(cols))
+    {
+
+        try
+        {
+            TaxiTripRecord record;
+            if (TaxiTripParser::parseRow(cols, idx, record))
+            {
+                store.addRecord(record);
+            }
+        }
+        catch (const exception &e)
+        {
             cerr << "Error parsing row: " << e.what() << endl;
         }
     }
@@ -55,7 +67,8 @@ int main() {
     auto duration = chrono::duration_cast<chrono::milliseconds>(endTime - startTime);
     cout << "Total records loaded: " << store.size() << endl;
     cout << "Time taken: " << duration.count() << " milliseconds" << endl;
-    cout << "Average time per rows: " << (store.size() / duration.count()) << " milliseconds" << endl << endl;
+    cout << "Average time per rows: " << (store.size() / duration.count()) << " milliseconds" << endl
+         << endl;
 
     cout << "First record:" << endl;
     store.printFirstRecord();
@@ -66,9 +79,9 @@ int main() {
     // example query
     TaxiTripQuerySpec q;
     q.pickupBetween(1577836800000, 1577840400000)
-    .distanceBetween(1.0f, 3.0f)
-    .totalBetween(1000, 2000)
-    .paymentTypeIs(1);
+        .distanceBetween(1.0f, 3.0f)
+        .totalBetween(1000, 2000)
+        .paymentTypeIs(1);
 
     // execute to get results
     startTime = clock::now();
@@ -76,14 +89,14 @@ int main() {
     endTime = clock::now();
     duration = chrono::duration_cast<chrono::milliseconds>(endTime - startTime);
 
-
     // print time taken
     cout << "Time taken for execute: " << duration.count() << " milliseconds" << endl;
     cout << "Query results: " << results.size() << endl;
 
     // print first 5 results
-    for (size_t i = 0; i < min(results.size(), size_t(5)); ++i) {
-        const TaxiTripRecord* r = results[i];
+    for (size_t i = 0; i < min(results.size(), size_t(5)); ++i)
+    {
+        const TaxiTripRecord *r = results[i];
         cout << "Record " << i + 1 << ":" << endl;
         cout << "  Vendor ID: " << r->getVendorId() << endl;
         cout << "  Pickup Datetime: " << r->getPickupDatetime() << endl;
