@@ -17,7 +17,8 @@ int main() {
     ios::sync_with_stdio(false);
     cin.tie(nullptr);
 
-    CSVReader reader("../../basic/data/2020_Yellow_Taxi_Trip_Data_20260215.csv");
+    // CSVReader reader("../../basic/data/2020_Yellow_Taxi_Trip_Data_20260215.csv");
+    CSVReader reader = CSVReader::fromDirectory("../../basic/data/");
     if (!reader.isOpen()) {
         cerr << "Failed to open CSV file." << endl;
         return 1;

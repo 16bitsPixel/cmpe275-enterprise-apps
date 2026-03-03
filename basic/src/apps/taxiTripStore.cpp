@@ -8,7 +8,7 @@ void TaxiTripStore::addRecord(const TaxiTripRecord& record) {
 // query records by pickup range
 vector<const TaxiTripRecord*> TaxiTripStore::queryPickupRange(int64_t start, int64_t end) const {
     vector<const TaxiTripRecord*> result;
-    result.reserve(25000000); // reserve some space to avoid too many reallocations
+    result.reserve(100000000); // reserve some space to avoid too many reallocations
 
     for (const auto& record : records) {
         if (record.getPickupDatetime() >= start && record.getPickupDatetime() <= end) {
