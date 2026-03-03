@@ -211,18 +211,27 @@ TaxiTripParser::ColumnIndex TaxiTripParser::buildColumnIndex(const ColMap& heade
 /*
     Parse a row of CSV into a TaxiTripRecord using the header map
 */
-TaxiTripRecord TaxiTripParser::parseRow(const vector<string>& cols, const ColumnIndex& idx) {
-    TaxiTripRecord record;
+bool TaxiTripParser::parseRow(const vector<string>& cols, const ColumnIndex& idx, TaxiTripRecord& record) {
+    // flag to check if parsed successfully
+    bool ok = true;
+
+    // set fields in the record using the column indices and helper functions
     record.setVendorId(toInt16(getIf(cols, idx.vendorId)));
-    // record.setPickupDatetime(0);
-    // record.setDropoffDatetime(0);
+
     record.setPickupDatetime(parseDateTimeToEpochMsUTC(getIf(cols, idx.pickupDatetime)));
     record.setDropoffDatetime(parseDateTimeToEpochMsUTC(getIf(cols, idx.dropoffDatetime)));
+
     record.setPassengerCount(toInt16(getIf(cols, idx.passengerCount)));
     record.setTripDistance(toFloat(getIf(cols, idx.tripDistance)));
+
+    if (record.getTripDistance() < 0 || record.getPassengerCount() < 0) {
+        // negative trip distance and passenger count are invalid
+        ok = false;
+    }
+    
     record.setRateCodeId(toInt16(getIf(cols, idx.rateCodeId)));
     
-    // for store_and_fwd_flag, we take the first character of the column value (after trimming)
+    // for store_and_fwd_flag, we take the first character of the column value
     string storeAndFwdStr = getIf(cols, idx.storeAndFwdFlag);
     if (!isNullOrEmpty(storeAndFwdStr)) {
         record.setStoreAndFwdFlag(storeAndFwdStr[0]);
@@ -240,5 +249,5 @@ TaxiTripRecord TaxiTripParser::parseRow(const vector<string>& cols, const Column
     record.setTotalAmount(toInt32(getIf(cols, idx.totalAmount)));
     record.setCongestionSurcharge(toInt32(getIf(cols, idx.congestionSurcharge)));
 
-    return record;
+    return ok;
 }

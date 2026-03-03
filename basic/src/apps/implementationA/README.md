@@ -124,3 +124,15 @@ Record 5:
   Improvement Surcharge: $0.3
   Total Amount: $15.95
   Congestion Surcharge: $2.5
+
+Benchmark Results:
+Rows Read: 179607688
+Total Data: 13703 MiB
+Parse Failures: 11440 (0.00636944%)
+Ingest Time: 2408.9 seconds
+Rows Scanned: 179607688
+Matches: 47587 (selectivity 0.026495%)
+Count Time: 8.21564 seconds
+Execute Time: 7.53722 seconds
+Row Throughput: 2.18617e+07 rows/sec
+I/O Throughput: 1667.91 MiB/sec

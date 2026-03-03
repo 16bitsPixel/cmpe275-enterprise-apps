@@ -43,7 +43,7 @@ class TaxiTripParser {
         static ColMap buildHeaderMap(const string& headerLine);
 
         // parse a line of CSV into a TaxiTripRecord object using the column index
-        static TaxiTripRecord parseRow(const vector<string>& columns, const ColumnIndex& idx);
+        static bool parseRow(const vector<string>& columns, const ColumnIndex& idx, TaxiTripRecord& record);
 
         // build column indices once for faster parsing
         static ColumnIndex buildColumnIndex(const ColMap& headerMap);

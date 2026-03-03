@@ -24,6 +24,8 @@ class TaxiTripStore {
 
         // return all records
         const vector<TaxiTripRecord>& getRecords() const { return records; }
+
+        void reserve(size_t n) { records.reserve(n); }
 };
 
 #endif
