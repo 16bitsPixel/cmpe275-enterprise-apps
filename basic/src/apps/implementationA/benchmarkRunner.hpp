@@ -7,19 +7,33 @@
 #include "taxiTripStore.hpp"
 #include "taxiTripQuerySpec.hpp"
 
+struct TimeStats {
+    double avg = 0.0;
+    double min = 0.0;
+    double max = 0.0;
+};
+
 struct BenchmarkResult {
-    // Ingest
+    // runs
+    int runs = 0;
+
+    // per run times
+    std::vector<double> ingestTimes;
+    std::vector<double> countTimes;
+    std::vector<double> executeTimes;
+
+    // last run counts
     size_t rowsRead = 0;
     size_t parseFailures = 0;
-    double ingestSeconds = 0.0;
-
-    // Query
     size_t rowsScanned = 0;
     size_t matches = 0;
-    double countSeconds = 0.0;
-    double executeSeconds = 0.0;
 
-    // derived metrics
+    // stats over runs
+    TimeStats ingestTimeStats;
+    TimeStats countTimeStats;
+    TimeStats executeTimeStats;
+
+    // derived metrics (based on average times across runs)
     double totalDataMiB = 0.0;
     double rowThroughputRowsPerSec = 0.0;
     double ioThroughputMiBPerSec = 0.0;
@@ -34,8 +48,10 @@ class BenchmarkRunner {
             return static_cast<double>(bytes) / (1024.0 * 1024.0);
         }
 
+        static TimeStats computeStats(const std::vector<double>& v);
+
     public:
-        BenchmarkResult run(const std::string& dataPath, bool isDir, const TaxiTripQuerySpec& query, size_t reserveRows) const;
+        BenchmarkResult run(const std::string& dataPath, bool isDir, const TaxiTripQuerySpec& query, size_t reserveRows, int runs) const;
 };
 
 #endif
