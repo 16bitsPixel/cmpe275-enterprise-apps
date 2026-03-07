@@ -5,7 +5,7 @@
 #include <vector>
 #include <fstream>
 #include <filesystem>
-#include "taxiTripParser.hpp"
+#include "../taxiTripParser.hpp"
 
 class CSVReader {
     private:
