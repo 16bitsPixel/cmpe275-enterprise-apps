@@ -63,7 +63,7 @@ static double secSince(const std::chrono::steady_clock::time_point &t0)
 int main()
 {
     const std::string csv_file_path =
-        "../basic/data/subset/yellow_tripdata_2020-01.csv";
+        "../../basic/data";
 
     const int runs = 10; //
 
@@ -88,7 +88,7 @@ int main()
     for (int i = 1; i <= runs; ++i)
     {
         // run quietly (no per-run prints)
-        BenchmarkStats s = runner.runOnceFile(csv_file_path, matchAll);
+        BenchmarkStats s = runner.runOnceDir(csv_file_path, matchAll);
 
         t1.push_back(s.sec);
         rt1.push_back(s.rows_per_sec);
@@ -119,7 +119,7 @@ int main()
     for (int i = 1; i <= runs; ++i)
     {
         // run quietly (no per-run prints)
-        BenchmarkStats s = runner.runOnceFile(csv_file_path, query);
+        BenchmarkStats s = runner.runOnceDir(csv_file_path, query);
 
         t2.push_back(s.sec);
         rt2.push_back(s.rows_per_sec);
