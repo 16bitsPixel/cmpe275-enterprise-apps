@@ -25,7 +25,15 @@ class TaxiTripStore {
         // return all records
         const vector<TaxiTripRecord>& getRecords() const { return records; }
 
+        // reserve space for records
         void reserve(size_t n) { records.reserve(n); }
+
+        // append records from a batch (parallelized)
+        void appendAll(std::vector<TaxiTripRecord>&& batch) {
+        records.insert(records.end(),
+                       std::make_move_iterator(batch.begin()),
+                       std::make_move_iterator(batch.end()));
+        }
 };
 
 #endif

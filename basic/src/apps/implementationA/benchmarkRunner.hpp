@@ -2,10 +2,12 @@
 #define BENCHMARK_RUNNER_HPP
 
 #include "taxiTripQuerySpec.hpp"
-#include "csvReader.hpp"
+#include "phase1/csvReader.hpp"
 #include "taxiTripParser.hpp"
 #include "taxiTripStore.hpp"
 #include "taxiTripQuerySpec.hpp"
+#include "phase2/modes.hpp"
+#include "phase3/query_soa.hpp"
 
 struct TimeStats {
     double avg = 0.0;
@@ -51,7 +53,16 @@ class BenchmarkRunner {
         static TimeStats computeStats(const std::vector<double>& v);
 
     public:
-        BenchmarkResult run(const std::string& dataPath, bool isDir, const TaxiTripQuerySpec& query, size_t reserveRows, int runs) const;
+        BenchmarkResult run(
+            const std::string& dataPath,
+            bool isDir,
+            const TaxiTripQuerySpec& query,
+            size_t reserveRows,
+            int runs,
+            IngestMode ingestmode,
+            QueryMode querymode,
+            int threads
+        ) const;
 };
 
 #endif

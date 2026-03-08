@@ -7,9 +7,31 @@ add_library(stuff ${lib-srcs})
 target_link_libraries(stuff PRIVATE ${Boost_LIBRARIES} ${SOCKET_LIBRARY})
 # dependencies
 set(BUILD_LIBRARIES stuff pthread)
+
+# OpenMP
+find_package(OpenMP)
+if(OpenMP_CXX_FOUND)
+    message(STATUS "Found OpenMP")
+else()
+    message(FATAL_ERROR "OpenMP not found")
+endif()
+
 # app targets
-add_executable(mini1A apps/implementationA/main.cpp apps/implementationA/csvReader.cpp apps/implementationA/taxiTripParser.cpp apps/implementationA/taxiTripStore.cpp apps/implementationA/taxiTripQuerySpec.cpp apps/implementationA/benchmarkRunner.cpp)
-target_link_libraries(mini1A PRIVATE ${BUILD_LIBRARIES})
+add_executable(mini1A
+    apps/implementationA/main.cpp
+    apps/implementationA/phase1/csvReader.cpp
+    apps/implementationA/taxiTripParser.cpp
+    apps/implementationA/taxiTripStore.cpp
+    apps/implementationA/taxiTripQuerySpec.cpp
+    apps/implementationA/benchmarkRunner.cpp
+    apps/implementationA/phase2/query.cpp
+    apps/implementationA/phase2/ingest.cpp
+    apps/implementationA/phase3/query_soa.cpp
+    apps/implementationA/phase3/ingest_soa.cpp
+)
+
+target_link_libraries(mini1A PRIVATE ${BUILD_LIBRARIES} OpenMP::OpenMP_CXX)
+
 target_compile_features(mini1A PRIVATE cxx_std_17)
 # ------------------------------------------------------------
 # Phase 1 new (your streaming dataset + predicates + benchmark)

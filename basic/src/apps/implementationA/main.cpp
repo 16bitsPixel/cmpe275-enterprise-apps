@@ -14,7 +14,7 @@ int main() {
     ios::sync_with_stdio(false);
     cin.tie(nullptr);
 
-    // CSVReader reader("../../basic/data/2020_Yellow_Taxi_Trip_Data_20260215.csv");
+    // phase 1
     // CSVReader reader = CSVReader::fromDirectory("/../../basic/data/");
     string path = "../../basic/data/";
 
@@ -30,9 +30,24 @@ int main() {
          .paymentTypeIs(1) // payment type = Credit card
          .totalBetween(1000, 2000); // total between $10 and $20
 
-    // set up benchmark runner and run 10 times
+    // set up benchmark runner and run 1 times
     BenchmarkRunner runner;
-    BenchmarkResult result = runner.run(path, isDir, query, reserveRows, 10);
+
+    // run the benchmark
+    // phase 1
+    // BenchmarkResult result = runner.run(path, isDir, query, reserveRows, 1);
+
+    // phase 2 and 3
+    BenchmarkResult result = runner.run(
+        path,
+        isDir,
+        query,
+        reserveRows,
+        1, // runs
+        IngestMode::ParallelFiles, // ingest mode
+        QueryMode::OpenMP, // query mode
+        4 // threads
+    );
 
     // print per run results
     cout << "Per-run times (seconds):\n";

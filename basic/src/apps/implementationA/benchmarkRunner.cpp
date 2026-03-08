@@ -3,6 +3,11 @@
 #include <chrono>
 #include <iostream>
 
+#include "phase2/ingest.hpp"
+#include "phase2/query.hpp"
+#include "phase3/query_soa.hpp"
+#include "phase3/ingest_soa.hpp"
+
 using steady_clock_t = std::chrono::steady_clock;
 
 TimeStats BenchmarkRunner::computeStats(const std::vector<double>& v) {
@@ -28,7 +33,10 @@ BenchmarkResult BenchmarkRunner::run(
     bool isDirectory,
     const TaxiTripQuerySpec& query,
     size_t reserveRows,
-    int runs
+    int runs,
+    IngestMode ingestMode,
+    QueryMode queryMode,
+    int threads
 ) const {
     BenchmarkResult out;
     out.runs = runs;
@@ -44,6 +52,143 @@ BenchmarkResult BenchmarkRunner::run(
     double avgMatches = 0.0;
 
     // fresh reader for directory per run
+    for (int run = 0; run < runs; ++run) {
+        // phase 1 and 2
+        // TaxiTripStore store;
+
+        //phase 3
+        TaxiTripStoreSoA store;
+        store.reserve(reserveRows); // add reserve() to store
+
+        // ---- ingest ----
+        auto t0 = steady_clock_t::now();
+
+        IngestStatsSoA istats{};
+        if (ingestMode == IngestMode::ParallelFiles) {
+            // phase 2
+            // istats = ingestParallelDirectory_OpenMP(csvPathOrDir, store, reserveRows, threads);
+
+            //phase 3
+            istats = ingestParallelDirectory_OpenMP_SoA(csvPathOrDir, store, reserveRows, threads);
+        } else {
+            // phase 2
+            // istats = ingestSerialDirectory(csvPathOrDir, store, reserveRows);
+
+            //phase 3
+            istats = ingestSerialDirectory_SoA(csvPathOrDir, store, reserveRows);
+        }
+
+        auto t1 = steady_clock_t::now();
+        out.ingestTimes.push_back(std::chrono::duration<double>(t1 - t0).count());
+
+        // ---- query ----
+        const size_t rowsScanned = store.size();
+
+        auto c0 = steady_clock_t::now();
+        /*
+            phase 2
+            size_t matchesCount = (queryMode == QueryMode::OpenMP)
+            ? countOpenMP(store, query, threads)
+            : countSerial(store, query);
+        */
+        
+        // phase 3
+        size_t matchesCount = (queryMode == QueryMode::OpenMP)
+            ? countOpenMP_SoA(store, query, threads)
+            : countSerial_SoA(store, query);
+        auto c1 = steady_clock_t::now();
+        out.countTimes.push_back(std::chrono::duration<double>(c1 - c0).count());
+
+        auto e0 = steady_clock_t::now();
+        /*
+            phase 2
+            auto results = (queryMode == QueryMode::OpenMP)
+            ? executeOpenMP(store, query, threads)
+            : executeSerial(store, query);
+        */
+
+        // phase 3
+        auto results = (queryMode == QueryMode::OpenMP)
+            ? executeOpenMP_SoA(store, query, threads)
+            : executeSerial_SoA(store, query);
+        auto e1 = steady_clock_t::now();
+        out.executeTimes.push_back(std::chrono::duration<double>(e1 - e0).count());
+
+        if (results.size() != matchesCount) {
+            std::cerr << "Run " << (run + 1)
+                      << " warning: count(" << matchesCount
+                      << ") != execute(" << results.size() << ")\n";
+        }
+
+        // last run sanity
+        out.rowsRead = istats.rowsRead;
+        out.parseFailures = istats.parseFailures;
+        out.rowsScanned = rowsScanned;
+        out.matches = matchesCount;
+
+        // accumulate averages
+        avgRowsRead += (double)istats.rowsRead;
+        avgFailures += (double)istats.parseFailures;
+        avgRowsScanned += (double)rowsScanned;
+        avgMatches += (double)matchesCount;
+
+        out.runs++;
+    }
+
+    // make sure runs are consistent
+    int actualRuns = static_cast<int>(out.ingestTimes.size());
+    out.runs = actualRuns;
+    if (actualRuns == 0) return out; // no successful runs
+
+    // stats
+    out.ingestTimeStats = computeStats(out.ingestTimes);
+    out.countTimeStats = computeStats(out.countTimes);
+    out.executeTimeStats = computeStats(out.executeTimes);
+
+    // derived metrics
+    avgRowsRead /= out.runs;
+    avgFailures /= out.runs;
+    avgRowsScanned /= out.runs;
+    avgMatches /= out.runs;
+
+    // parse failure rate and total data size for throughput calculation
+    if (avgRowsRead > 0.0) {
+        out.parseFailureRatePct = 100.0 * avgFailures / avgRowsRead;
+        
+        // get total data size in MiB for throughput calculation
+        out.totalDataMiB = bytesToMiB(static_cast<std::uint64_t>(avgRowsRead) * static_cast<std::uint64_t>(sizeof(TaxiTripRecord)));
+    }
+
+    // selectivity
+    if (avgRowsScanned > 0.0) {
+        out.selectivityPct = 100.0 * avgMatches / avgRowsScanned;
+    }
+
+    // phase 3 estimate bytes scanned
+    const std::uint64_t bytesPerRow = 
+        sizeof(int64_t) + // pickupDatetime
+        sizeof(int64_t) + // dropoffDatetime
+        sizeof(float) +   // tripDistance
+        sizeof(int16_t) + // paymentType
+        sizeof(int32_t);  // totalAmount
+
+    out.totalDataMiB = bytesToMiB(static_cast<std::uint64_t>(avgRowsRead) * bytesPerRow);
+
+    // throughput based on avg count function time
+    if (out.countTimeStats.avg > 0.0) {
+        out.rowThroughputRowsPerSec = avgRowsScanned / out.countTimeStats.avg;
+
+        // phase 2
+        // std::uint64_t bytesScanned = static_cast<std::uint64_t>(avgRowsScanned) * static_cast<std::uint64_t>(sizeof(TaxiTripRecord));
+
+        out.ioThroughputMiBPerSec = bytesToMiB((std::uint64_t)(avgRowsScanned) * bytesPerRow) / out.countTimeStats.avg;
+    }
+
+    return out;
+}
+
+/* OLD serial version
+// fresh reader for directory per run
     for (int i = 0; i < runs; ++i) {
         CSVReader reader = isDirectory
             ? CSVReader::fromDirectory(csvPathOrDir)
@@ -123,38 +268,4 @@ BenchmarkResult BenchmarkRunner::run(
     int actualRuns = static_cast<int>(out.ingestTimes.size());
     out.runs = actualRuns;
     if (actualRuns == 0) return out; // no successful runs
-
-    // stats
-    out.ingestTimeStats = computeStats(out.ingestTimes);
-    out.countTimeStats = computeStats(out.countTimes);
-    out.executeTimeStats = computeStats(out.executeTimes);
-
-    // derived metrics
-    avgRowsRead /= actualRuns;
-    avgFailures /= actualRuns;
-    avgRowsScanned /= actualRuns;
-    avgMatches /= actualRuns;
-
-    // parse failure rate and total data size for throughput calculation
-    if (avgRowsRead > 0.0) {
-        out.parseFailureRatePct = 100.0 * avgFailures / avgRowsRead;
-        
-        // get total data size in MiB for throughput calculation
-        out.totalDataMiB = bytesToMiB(static_cast<std::uint64_t>(avgRowsRead) * static_cast<std::uint64_t>(sizeof(TaxiTripRecord)));
-    }
-
-    // selectivity
-    if (avgRowsScanned > 0.0) {
-        out.selectivityPct = 100.0 * avgMatches / avgRowsScanned;
-    }
-
-    // throughput based on avg count function time
-    if (out.countTimeStats.avg > 0.0) {
-        out.rowThroughputRowsPerSec = avgRowsScanned / out.countTimeStats.avg;
-
-        std::uint64_t bytesScanned = static_cast<std::uint64_t>(avgRowsScanned) * static_cast<std::uint64_t>(sizeof(TaxiTripRecord));
-        out.ioThroughputMiBPerSec = bytesToMiB(bytesScanned) / out.countTimeStats.avg;
-    }
-
-    return out;
-}
+*/
