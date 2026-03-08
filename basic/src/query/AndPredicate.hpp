@@ -7,6 +7,7 @@
 class AndPredicate : public ITripPredicate
 {
 private:
+    // shared_ptr ensures safe shared ownership of predicate objects when combining multiple conditions.
     std::vector<std::shared_ptr<const ITripPredicate>> conditions;
 
 public:

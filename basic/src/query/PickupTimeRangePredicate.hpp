@@ -17,8 +17,17 @@ private:
 
 public:
     PickupTimeRangePredicate(int64_t startMs, int64_t endMs)
-        : startMs_(startMs), endMs_(endMs)
     {
+        if (startMs <= endMs)
+        {
+            startMs_ = startMs;
+            endMs_ = endMs;
+        }
+        else
+        {
+            startMs_ = endMs;
+            endMs_ = startMs;
+        }
     }
 
     bool matches(const TaxiTrip &trip) const override

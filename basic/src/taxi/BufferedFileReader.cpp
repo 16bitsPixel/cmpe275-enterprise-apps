@@ -20,7 +20,15 @@ bool BufferedFileReader::nextLine(std::string &outLine)
 {
     if (!in_.is_open())
         return false;
-    return static_cast<bool>(std::getline(in_, outLine));
+
+    if (!std::getline(in_, outLine))
+        return false;
+
+    // Strip trailing '\r'
+    if (!outLine.empty() && outLine.back() == '\r')
+        outLine.pop_back();
+
+    return true;
 }
 
 void BufferedFileReader::close()

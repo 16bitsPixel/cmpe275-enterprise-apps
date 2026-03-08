@@ -175,18 +175,98 @@ int32_t TaxiTripCSVParser::parseMoneyCents(const char *s, size_t len)
         if (a >= b)
             return 0;
     }
+    bool neg = false;
+    if (*a == '+' || *a == '-')
+    {
+        neg = (*a == '-');
+        ++a;
+        if (a >= b)
+            return 0;
+    }
 
-    char buf[64];
-    size_t n = (size_t)(b - a);
-    n = (n < sizeof(buf) - 1) ? n : (sizeof(buf) - 1);
-    std::memcpy(buf, a, n);
-    buf[n] = '\0';
+    // Parse integer dollars part
+    int64_t dollars = 0;
+    bool sawDigit = false;
 
-    char *endp = nullptr;
-    double v = std::strtod(buf, &endp);
-    if (endp == buf)
+    while (a < b && *a >= '0' && *a <= '9')
+    {
+        sawDigit = true;
+        dollars = dollars * 10 + (*a - '0');
+        ++a;
+    }
+
+    // Parse optional fractional part
+    int cents = 0;
+    int fracDigits = 0;
+
+    if (a < b && *a == '.')
+    {
+        ++a;
+
+        // Read up to 2 digits into cents
+        while (a < b && *a >= '0' && *a <= '9' && fracDigits < 2)
+        {
+            cents = cents * 10 + (*a - '0');
+            ++a;
+            ++fracDigits;
+        }
+
+        // If only 1 digit, scale (e.g., 1.2 => 1.20)
+        if (fracDigits == 1)
+            cents *= 10;
+
+        // Rounding: look at 3rd digit (and beyond) to round to nearest cent
+        bool roundUp = false;
+        if (a < b && *a >= '0' && *a <= '9')
+        {
+            // 3rd digit decides rounding (>=5 => up)
+            if (*a >= '5')
+                roundUp = true;
+
+            // consume remaining digits (optional; not strictly needed)
+            while (a < b && *a >= '0' && *a <= '9')
+                ++a;
+        }
+
+        // If we had no digits at all before '.', treat as invalid unless we saw digits in dollars
+        // (e.g., ".50" would be considered invalid by this; TLC data usually doesn't do that)
+        if (!sawDigit && fracDigits == 0)
+            return 0;
+
+        if (roundUp)
+        {
+            cents += 1;
+            if (cents >= 100)
+            {
+                cents = 0;
+                dollars += 1;
+            }
+        }
+    }
+    else
+    {
+        // No '.', must have seen at least one digit
+        if (!sawDigit)
+            return 0;
+    }
+
+    // Skip trailing spaces (if any)
+    while (a < b && (*a == ' ' || *a == '\t'))
+        ++a;
+
+    if (a != b)
         return 0;
-    return (int32_t)llround(v * 100.0);
+
+    int64_t total = dollars * 100 + cents;
+    if (neg)
+        total = -total;
+
+    if (total > INT32_MAX)
+        return INT32_MAX;
+    if (total < INT32_MIN)
+        return INT32_MIN;
+
+    return (int32_t)total;
 }
 
 bool TaxiTripCSVParser::isHeaderLine(std::string_view line)

@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
-
+#include <cstddef> // for size_t
 /*
 This class implements parse() for the nyc taxi dataset.
 
