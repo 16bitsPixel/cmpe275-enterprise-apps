@@ -187,7 +187,7 @@ IO Throughput: 1110 MiB/sec
 Parse Failure Rate: 0.00636944 %
 Selectivity: 0.026495 %
 
-Phase 3 Data
+# Phase 3 Data
 Run 1: Ingest = 1180.12, Count = 0.836962, Execute = 1.58062
 
 Derived Metrics:
