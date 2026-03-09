@@ -1,4 +1,7 @@
 # NYC Yellow Taxi Trip Records – Streaming vs In-Memory Query Engine (Phases 1–3)
+## Authors
+Brandon Llanes  
+Meghana Koti
 
 ## Overview
 
