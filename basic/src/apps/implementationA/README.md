@@ -1,3 +1,88 @@
+# NYC Yellow Taxi – In-Memory Implementation
+## Overview
+This project implements an in-memory data processing system for the NYC Yellow Taxi Trip Records dataset (2019–2022). The total dataset size exceeds 24GB and contains over 100 million records.
+
+The system was developed in three phases:
+
+1. Phase 1 – Serial Baseline
+
+2. Phase 2 – OpenMP Parallelization
+
+3. Phase 3 – Object-of-Arrays (SoA) Model Redefinition
+
+The primary goal is to evaluate ingestion and query performance under different architectural and parallelization strategies.
+
+## Dataset
+
+Source: NYC OpenData – Yellow Taxi Trip Records  
+Years used: 2019–2022  
+Total size on disk: ~24.1GB  
+Average rows per year: ~30 million  
+Total rows: ~109 million+  
+
+## Architecture
+### Core Components
+| Component           | Responsibility                             |
+| ------------------- | ------------------------------------------ |
+| `CSVReader`         | Reads CSV files from a directory           |
+| `TaxiTripParser`    | Converts CSV rows into primitive types     |
+| `TaxiTripStoreSoA`  | Stores dataset using columnar (SoA) layout |
+| `TaxiTripQuerySpec` | Defines predicate constraints              |
+| `BenchmarkRunner`   | Executes ingestion + query benchmarks      |
+
+## Phase Breakdown
+## Phase 1 - Serial (Array-of-Structures)
+-  records stored as std::vector<TaxiTripRecord>  
+-  datetime parsed into epoch UTC (int64_t)  
+-  predicate-based query API
+-  10-run benchmark baseline
+
+Characteristics:  
+-  high ingestion cost (~2500s)
+-  fast query (~7-8s)
+-  memory-heavy (13,703 MiB scanned per query)
+
+## Phase 2 - Parallel (OpenMP)
+-  file-level parallel ingestion
+-  parallel query via index chunking
+-  reduction for count queries
+-  two-pass output for execute queries
+
+Findings:  
+-  ingestion improved (~2.09x speedup)  
+-  query degraded due to memory bandwidth contention
+-  demonstrated memory-bound behavior
+
+## Phase 3 - Object-of-Arrays (SoA)
+-  replaced AoS with column vectors
+-  queries access only necessary columns
+-  reduced scanned data from 13703 MiB to 4453 MiB
+-  query count time reduced from 10.59s to 0.843s
+-  ~12.6x query speedup
+
+Key Insight: Memory had a greater impact than threading alone.
+
+## Build Instructions
+### Requirements
+-  macOS / Linux  
+-  C++17+  
+-  CMake 3.16+  
+-  OpenMP (libomp on macOS)  
+
+### Build
+```bash
+mkdir build
+cd build
+cmake -DCMAKE_BUILD_TYPE=Release ..
+make -j
+```
+
+### Running the Program
+```bash
+cd build/src
+./mini1A
+```
+
 # Phase One Data
 Per-run times (seconds)
 Run 1: Ingest = 2498.09, Count = 7.91144, Execute = 7.46627
