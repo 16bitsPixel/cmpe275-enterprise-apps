@@ -1,143 +1,4 @@
-# Data
-Total records loaded: 95208669
-Time taken: 1411444 milliseconds
-Average time per rows: 67 milliseconds
-
-First record:
-Vendor ID: 1
-Pickup Datetime: 1577838495000
-Dropoff Datetime: 1577838783000
-Passenger Count: 1
-Trip Distance: 1.2
-Rate Code ID: 1
-Store and Fwd Flag: N
-PU Location ID: 238
-DO Location ID: 239
-Payment Type: 1
-Fare Amount: $6
-Extra: $3
-MTA Tax: $0.5
-Tip Amount: $1.47
-Tolls Amount: $0
-Improvement Surcharge: $0.3
-Total Amount: $11.27
-Congestion Surcharge: $2.5
-
-Time taken for execute: 4026 milliseconds
-Query results: 3739
-Record 1:
-  Vendor ID: 1
-  Pickup Datetime: 1577838495000
-  Dropoff Datetime: 1577838783000
-  Passenger Count: 1
-  Trip Distance: 1.2
-  Rate Code ID: 1
-  Store and Fwd Flag: N
-  PU Location ID: 238
-  DO Location ID: 239
-  Payment Type: 1
-  Fare Amount: $6
-  Extra: $3
-  MTA Tax: $0.5
-  Tip Amount: $1.47
-  Tolls Amount: $0
-  Improvement Surcharge: $0.3
-  Total Amount: $11.27
-  Congestion Surcharge: $2.5
-
-Record 2:
-  Vendor ID: 1
-  Pickup Datetime: 1577838939000
-  Dropoff Datetime: 1577839384000
-  Passenger Count: 1
-  Trip Distance: 1.2
-  Rate Code ID: 1
-  Store and Fwd Flag: N
-  PU Location ID: 239
-  DO Location ID: 238
-  Payment Type: 1
-  Fare Amount: $7
-  Extra: $3
-  MTA Tax: $0.5
-  Tip Amount: $1.5
-  Tolls Amount: $0
-  Improvement Surcharge: $0.3
-  Total Amount: $12.3
-  Congestion Surcharge: $2.5
-
-Record 3:
-  Vendor ID: 1
-  Pickup Datetime: 1577840111000
-  Dropoff Datetime: 1577841123000
-  Passenger Count: 2
-  Trip Distance: 2.4
-  Rate Code ID: 1
-  Store and Fwd Flag: N
-  PU Location ID: 246
-  DO Location ID: 79
-  Payment Type: 1
-  Fare Amount: $12
-  Extra: $3
-  MTA Tax: $0.5
-  Tip Amount: $1.75
-  Tolls Amount: $0
-  Improvement Surcharge: $0.3
-  Total Amount: $17.55
-  Congestion Surcharge: $2.5
-
-Record 4:
-  Vendor ID: 2
-  Pickup Datetime: 1577838114000
-  Dropoff Datetime: 1577838451000
-  Passenger Count: 1
-  Trip Distance: 1.07
-  Rate Code ID: 1
-  Store and Fwd Flag: N
-  PU Location ID: 43
-  DO Location ID: 239
-  Payment Type: 1
-  Fare Amount: $6
-  Extra: $0.5
-  MTA Tax: $0.5
-  Tip Amount: $1.96
-  Tolls Amount: $0
-  Improvement Surcharge: $0.3
-  Total Amount: $11.76
-  Congestion Surcharge: $2.5
-
-Record 5:
-  Vendor ID: 1
-  Pickup Datetime: 1577838533000
-  Dropoff Datetime: 1577839319000
-  Passenger Count: 1
-  Trip Distance: 1.5
-  Rate Code ID: 1
-  Store and Fwd Flag: N
-  PU Location ID: 170
-  DO Location ID: 161
-  Payment Type: 1
-  Fare Amount: $9.5
-  Extra: $3
-  MTA Tax: $0.5
-  Tip Amount: $2.65
-  Tolls Amount: $0
-  Improvement Surcharge: $0.3
-  Total Amount: $15.95
-  Congestion Surcharge: $2.5
-
-Benchmark Results:
-Rows Read: 179607688
-Total Data: 13703 MiB
-Parse Failures: 11440 (0.00636944%)
-Ingest Time: 2408.9 seconds
-Rows Scanned: 179607688
-Matches: 47587 (selectivity 0.026495%)
-Count Time: 8.21564 seconds
-Execute Time: 7.53722 seconds
-Row Throughput: 2.18617e+07 rows/sec
-I/O Throughput: 1667.91 MiB/sec
-
-# 10 Benchmark Runs
+# Phase One Data
 Per-run times (seconds)
 Run 1: Ingest = 2498.09, Count = 7.91144, Execute = 7.46627
 
@@ -326,12 +187,93 @@ IO Throughput: 1110 MiB/sec
 Parse Failure Rate: 0.00636944 %
 Selectivity: 0.026495 %
 
-# Phase 3 Data
+Phase 3 Data
 Run 1: Ingest = 1180.12, Count = 0.836962, Execute = 1.58062
 
 Derived Metrics:
 Total Data Size: 4453.47 MiB
 Row Throughput: 2.14581e+08 rows/sec
 IO Throughput: 5320.65 MiB/sec
+Parse Failure Rate: 0.00636944 %
+Selectivity: 0.0264967 %
+
+Run 2: Ingest = 1182.8, Count = 0.845597, Execute = 1.56403
+
+Derived Metrics:
+Total Data Size: 4453.47 MiB
+Row Throughput: 2.1239e+08 rows/sec
+IO Throughput: 5266.32 MiB/sec
+Parse Failure Rate: 0.00636944 %
+Selectivity: 0.0264967 %
+
+Run 3: Ingest = 1182.6, Count = 0.837278, Execute = 1.59034
+
+Derived Metrics:
+Total Data Size: 4453.47 MiB
+Row Throughput: 2.145e+08 rows/sec
+IO Throughput: 5318.65 MiB/sec
+Parse Failure Rate: 0.00636944 %
+Selectivity: 0.0264967 %
+
+Run 4: Ingest = 1184.99, Count = 0.837944, Execute = 1.56793
+
+Derived Metrics:
+Total Data Size: 4453.47 MiB
+Row Throughput: 2.1433e+08 rows/sec
+IO Throughput: 5314.42 MiB/sec
+Parse Failure Rate: 0.00636944 %
+Selectivity: 0.0264967 %
+
+Run 5: Ingest = 1177.95, Count = 0.844331, Execute = 1.56881
+
+Derived Metrics:
+Total Data Size: 4453.47 MiB
+Row Throughput: 2.12708e+08 rows/sec
+IO Throughput: 5274.22 MiB/sec
+Parse Failure Rate: 0.00636944 %
+Selectivity: 0.0264967 %
+
+Run 6: Ingest = 1183.03, Count = 0.844077, Execute = 1.56761
+
+Derived Metrics:
+Total Data Size: 4453.47 MiB
+Row Throughput: 2.12772e+08 rows/sec
+IO Throughput: 5275.8 MiB/sec
+Parse Failure Rate: 0.00636944 %
+Selectivity: 0.0264967 %
+
+Run 7: Ingest = 1181.46, Count = 0.846591, Execute = 1.59282
+
+Derived Metrics:
+Total Data Size: 4453.47 MiB
+Row Throughput: 2.12141e+08 rows/sec
+IO Throughput: 5260.14 MiB/sec
+Parse Failure Rate: 0.00636944 %
+Selectivity: 0.0264967 %
+
+Run 8: Ingest = 1185.86, Count = 0.851144, Execute = 1.57682
+
+Derived Metrics:
+Total Data Size: 4453.47 MiB
+Row Throughput: 2.11006e+08 rows/sec
+IO Throughput: 5232 MiB/sec
+Parse Failure Rate: 0.00636944 %
+Selectivity: 0.0264967 %
+
+Run 9: Ingest = 1184.58, Count = 0.849642, Execute = 1.57919
+
+Derived Metrics:
+Total Data Size: 4453.47 MiB
+Row Throughput: 2.11379e+08 rows/sec
+IO Throughput: 5241.25 MiB/sec
+Parse Failure Rate: 0.00636944 %
+Selectivity: 0.0264967 %
+
+Run 10: Ingest = 1177.08, Count = 0.838033, Execute = 1.56953
+
+Derived Metrics:
+Total Data Size: 4453.47 MiB
+Row Throughput: 2.14307e+08 rows/sec
+IO Throughput: 5313.85 MiB/sec
 Parse Failure Rate: 0.00636944 %
 Selectivity: 0.0264967 %
