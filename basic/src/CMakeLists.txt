@@ -67,15 +67,10 @@ target_include_directories(phase1lib PUBLIC
 
 target_compile_features(phase1lib PUBLIC cxx_std_17)
 target_link_libraries(phase1lib PRIVATE ${Boost_LIBRARIES} ${SOCKET_LIBRARY})
-
-# Executables for Phase 1 and Phase 2
-add_executable(miniPhase1 apps/miniPhase1.cpp)
-target_link_libraries(miniPhase1 PRIVATE phase1lib ${BUILD_LIBRARIES})
-target_compile_features(miniPhase1 PRIVATE cxx_std_17)
-
-add_executable(miniPhase2 apps/miniPhase2.cpp)
-target_link_libraries(miniPhase2 PRIVATE phase1lib ${BUILD_LIBRARIES})
-target_compile_features(miniPhase2 PRIVATE cxx_std_17)
+# Executables for Phase 1 and Phase 2 streaming
+add_executable(streamingmain apps/streamingmain.cpp)
+target_link_libraries(streamingmain PRIVATE phase1lib ${BUILD_LIBRARIES})
+target_compile_features(streamingmain PRIVATE cxx_std_17)
 
 # ============================================================
 # OpenMP flags for macOS (Homebrew libomp)
@@ -87,16 +82,12 @@ if(APPLE)
     target_link_libraries(phase1lib PUBLIC /opt/homebrew/opt/libomp/lib/libomp.dylib)
 
     # Enable OpenMP for the executables
-    target_compile_options(miniPhase1 PRIVATE -Xpreprocessor -fopenmp)
-    target_link_libraries(miniPhase1 PRIVATE /opt/homebrew/opt/libomp/lib/libomp.dylib)
-
-    target_compile_options(miniPhase2 PRIVATE -Xpreprocessor -fopenmp)
-    target_link_libraries(miniPhase2 PRIVATE /opt/homebrew/opt/libomp/lib/libomp.dylib)
+    target_compile_options(streamingmain PRIVATE -Xpreprocessor -fopenmp)
+    target_link_libraries(streamingmain PRIVATE /opt/homebrew/opt/libomp/lib/libomp.dylib)
 else()
     # Non-Apple platforms: link OpenMP properly if found
     if(OpenMP_CXX_FOUND)
         target_link_libraries(phase1lib PUBLIC OpenMP::OpenMP_CXX)
-        target_link_libraries(miniPhase1 PRIVATE OpenMP::OpenMP_CXX)
-        target_link_libraries(miniPhase2 PRIVATE OpenMP::OpenMP_CXX)
+        target_link_libraries(streamingmain PRIVATE OpenMP::OpenMP_CXX)
     endif()
 endif()

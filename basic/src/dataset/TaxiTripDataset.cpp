@@ -40,33 +40,48 @@ QueryResult TaxiTripDataset::queryFile(const std::string &csv_file_path,
 
     BufferedFileReader reader;
     if (!reader.open(csv_file_path))
-    {
-
         return result;
-    }
 
-    // Read header line (expected in TLC taxi CSVs)
     if (!reader.nextLine(line))
     {
         reader.close();
         return result;
     }
 
-    // Initialize parser with header
     parser.initFromHeader(line);
 
-    // Process rows one-by-one
-    while (reader.nextLine(line))
+    // ---- Profiling disabled for final benchmark ----
+    // constexpr uint64_t SAMPLE_EVERY = 1024;
+    // uint64_t line_idx = 0;
+    // uint64_t read_ns = 0;
+    // uint64_t compute_ns = 0;
+    // uint64_t sampled = 0;
+
+    while (true)
     {
         if (stop_flag && stop_flag->load())
             break;
+
+        // bool do_sample = ((line_idx++ % SAMPLE_EVERY) == 0);
+        // std::chrono::steady_clock::time_point t0;
+        // if (do_sample)
+        //     t0 = std::chrono::steady_clock::now();
+
+        if (!reader.nextLine(line))
+            break;
+
+        // if (do_sample)
+        // {
+        //     auto t1 = std::chrono::steady_clock::now();
+        //     read_ns += (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
+        //     t0 = std::chrono::steady_clock::now();
+        // }
 
         if (line.empty())
             continue;
 
         result.rows_scanned++;
 
-        // parse fills the reused 'trip' object
         if (!parser.parse(line, trip))
         {
             result.rows_parse_failed++;
@@ -75,9 +90,22 @@ QueryResult TaxiTripDataset::queryFile(const std::string &csv_file_path,
 
         if (predicate.matches(trip))
             result.rows_matched++;
+
+        // if (do_sample)
+        // {
+        //     auto t1 = std::chrono::steady_clock::now();
+        //     compute_ns += (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
+        //     sampled++;
+        // }
     }
 
     reader.close();
+
+    // Profiling fields reset
+    result.read_ns = 0;
+    result.compute_ns = 0;
+    result.sampled = 0;
+
     return result;
 }
 
@@ -412,9 +440,6 @@ QueryResult TaxiTripDataset::queryDirParallel(const std::string &dir_path,
     return queryFilesParallel(csv_files, predicate, num_threads, stop_flag);
 }
 
-/*
-This method processes multiple CSV files in parallel using OpenMP file-level parallelism with dynamic scheduling
-*/
 QueryResult TaxiTripDataset::queryFilesParallel(const std::vector<std::string> &csv_files,
                                                 const ITripPredicate &predicate,
                                                 int num_threads,
@@ -422,6 +447,7 @@ QueryResult TaxiTripDataset::queryFilesParallel(const std::vector<std::string> &
 {
     if (csv_files.empty())
         return {};
+
     int threads = (num_threads > 0) ? num_threads : omp_get_max_threads();
 
     uint64_t total_scanned = 0;
@@ -431,12 +457,14 @@ QueryResult TaxiTripDataset::queryFilesParallel(const std::vector<std::string> &
     uint64_t files_skipped = 0;
     uint64_t files_errors = 0;
 
-    // When stop is triggered, threads stop picking up new files. Any thread already working will stop shortly after, when it reaches the next stop check.
+    uint64_t total_read_ns = 0;
+    uint64_t total_compute_ns = 0;
+    uint64_t total_sampled = 0;
 
-#pragma omp parallel for num_threads(threads)                                              \
-    reduction(+ : total_scanned, total_matched, total_failed, files_skipped, files_errors) \
+#pragma omp parallel for num_threads(threads)                                                             \
+    reduction(+ : total_scanned, total_matched, total_failed, files_skipped, files_errors, total_read_ns, \
+                  total_compute_ns, total_sampled)                                                        \
     schedule(dynamic, 1)
-
     for (std::size_t i = 0; i < csv_files.size(); ++i)
     {
         if (stop_flag && stop_flag->load())
@@ -456,6 +484,11 @@ QueryResult TaxiTripDataset::queryFilesParallel(const std::vector<std::string> &
             total_scanned += r.rows_scanned;
             total_matched += r.rows_matched;
             total_failed += r.rows_parse_failed;
+
+            // Aggregate profiling
+            total_read_ns += r.read_ns;
+            total_compute_ns += r.compute_ns;
+            total_sampled += r.sampled;
         }
         catch (...)
         {
@@ -468,7 +501,22 @@ QueryResult TaxiTripDataset::queryFilesParallel(const std::vector<std::string> &
     result.rows_matched = total_matched;
     result.rows_parse_failed = total_failed;
 
-    // Optional: store these in QueryResult if you add fields
+    // Store aggregated profiling too
+    result.read_ns = total_read_ns;
+    result.compute_ns = total_compute_ns;
+    result.sampled = total_sampled;
+    // Profiling output disabled for final benchmark runs
+    /*double read_s = (double)total_read_ns / 1e9;
+    double comp_s = (double)total_compute_ns / 1e9;
+    double tot_s = read_s + comp_s;
+
+    if (tot_s > 0.0)
+    {
+        std::cout << "[PROFILE-AGG] sampled=" << total_sampled
+                  << " read~" << (100.0 * read_s / tot_s) << "% "
+                  << "compute~" << (100.0 * comp_s / tot_s) << "%\n";
+    }
+*/
     return result;
 }
 

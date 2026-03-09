@@ -17,4 +17,7 @@ struct QueryResult
 
     // allocated only when we collect matching trips
     std::unique_ptr<std::vector<TaxiTrip>> matchedTrips;
+    uint64_t read_ns = 0;    // sampled time spent in nextLine()
+    uint64_t compute_ns = 0; // sampled time spent in parse + predicate
+    uint64_t sampled = 0;
 };
