@@ -67,6 +67,7 @@ target_include_directories(phase1lib PUBLIC
 
 target_compile_features(phase1lib PUBLIC cxx_std_17)
 target_link_libraries(phase1lib PRIVATE ${Boost_LIBRARIES} ${SOCKET_LIBRARY})
+
 # Executables for Phase 1 and Phase 2 streaming
 add_executable(streamingmain apps/streamingmain.cpp)
 target_link_libraries(streamingmain PRIVATE phase1lib ${BUILD_LIBRARIES})
@@ -90,4 +91,71 @@ else()
         target_link_libraries(phase1lib PUBLIC OpenMP::OpenMP_CXX)
         target_link_libraries(streamingmain PRIVATE OpenMP::OpenMP_CXX)
     endif()
+endif()
+# ============================================================
+# Local query executable
+# ============================================================
+add_executable(localquery
+    apps/localquery_main.cpp
+    dataset/PartitionLoader.cpp
+    dataset/TaxiTripDataset.cpp
+    query/LocalQueryEngine.cpp
+    querycoordination/QueryCoordinator.cpp
+    querycoordination/RequestState.cpp
+    querycoordination/WorkerNode.cpp
+    taxi/BufferedFileReader.cpp
+    taxi_implementation/TaxiTripCSVParser.cpp
+)
+target_include_directories(localquery PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}
+)
+
+target_compile_features(localquery PRIVATE cxx_std_17)
+
+if(APPLE)
+    target_include_directories(localquery PRIVATE /opt/homebrew/opt/libomp/include)
+    target_compile_options(localquery PRIVATE -Xpreprocessor -fopenmp)
+    target_link_libraries(localquery PRIVATE
+        ${BUILD_LIBRARIES}
+        /opt/homebrew/opt/libomp/lib/libomp.dylib
+    )
+else()
+    target_link_libraries(localquery PRIVATE
+        ${BUILD_LIBRARIES}
+        OpenMP::OpenMP_CXX
+    )
+endif()
+# ============================================================
+# Distributed query executable
+# ============================================================
+add_executable(distributedquery
+    apps/distributedquery_main.cpp
+    dataset/PartitionLoader.cpp
+    dataset/TaxiTripDataset.cpp
+    query/LocalQueryEngine.cpp
+    querycoordination/QueryCoordinator.cpp
+    querycoordination/RequestState.cpp
+    querycoordination/WorkerNode.cpp
+    taxi/BufferedFileReader.cpp
+    taxi_implementation/TaxiTripCSVParser.cpp
+)
+
+target_include_directories(distributedquery PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}
+)
+
+target_compile_features(distributedquery PRIVATE cxx_std_17)
+
+if(APPLE)
+    target_include_directories(distributedquery PRIVATE /opt/homebrew/opt/libomp/include)
+    target_compile_options(distributedquery PRIVATE -Xpreprocessor -fopenmp)
+    target_link_libraries(distributedquery PRIVATE
+        ${BUILD_LIBRARIES}
+        /opt/homebrew/opt/libomp/lib/libomp.dylib
+    )
+else()
+    target_link_libraries(distributedquery PRIVATE
+        ${BUILD_LIBRARIES}
+        OpenMP::OpenMP_CXX
+    )
 endif()

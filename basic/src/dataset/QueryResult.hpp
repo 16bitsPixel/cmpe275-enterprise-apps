@@ -9,6 +9,12 @@ QueryResult holds counters from a sequential scan.
 
 Note: matchedTrips is allocated only when collect APIs are used.
 */
+#pragma once
+
+#include <cstdint>
+#include <cstddef>
+#include <vector>
+
 struct QueryResult
 {
     uint64_t rows_scanned = 0;      // number of data lines read (excluding header)
