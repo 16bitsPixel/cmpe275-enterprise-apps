@@ -1,10 +1,9 @@
 #pragma once
 
 #include <string>
-
 #include <grpcpp/grpcpp.h>
 
-#include "../query/QueryCoordinator.hpp"
+#include "../querycoordination/QueryCoordinator.hpp"
 #include "query.grpc.pb.h"
 
 class QueryServiceImpl final : public mini2::query::QueryService::Service {
@@ -12,29 +11,29 @@ public:
     QueryServiceImpl(const std::string& selfNodeId,
                      QueryCoordinator& coordinator);
 
-    grpc::Status SubmitQuery(grpc::ServerContext* context,
-                             const mini2::query::SubmitQueryRequest* request,
-                             mini2::query::SubmitQueryReply* response) override;
+    grpc::Status SubmitQuery(grpc::ServerContext*,
+                             const mini2::query::SubmitQueryRequest*,
+                             mini2::query::SubmitQueryReply*) override;
 
-    grpc::Status FetchChunk(grpc::ServerContext* context,
-                            const mini2::query::FetchChunkRequest* request,
-                            mini2::query::FetchChunkReply* response) override;
+    grpc::Status FetchChunk(grpc::ServerContext*,
+                            const mini2::query::FetchChunkRequest*,
+                            mini2::query::FetchChunkReply*) override;
 
-    grpc::Status CancelQuery(grpc::ServerContext* context,
-                             const mini2::query::CancelQueryRequest* request,
-                             mini2::query::CancelQueryReply* response) override;
+    grpc::Status CancelQuery(grpc::ServerContext*,
+                             const mini2::query::CancelQueryRequest*,
+                             mini2::query::CancelQueryReply*) override;
 
-    grpc::Status SubmitSubQuery(grpc::ServerContext* context,
-                                const mini2::query::SubmitSubQueryRequest* request,
-                                mini2::query::SubmitSubQueryReply* response) override;
+    grpc::Status SubmitSubQuery(grpc::ServerContext*,
+                                const mini2::query::SubmitSubQueryRequest*,
+                                mini2::query::SubmitSubQueryReply*) override;
 
-    grpc::Status FetchSubChunk(grpc::ServerContext* context,
-                               const mini2::query::FetchSubChunkRequest* request,
-                               mini2::query::FetchSubChunkReply* response) override;
+    grpc::Status FetchSubChunk(grpc::ServerContext*,
+                               const mini2::query::FetchSubChunkRequest*,
+                               mini2::query::FetchSubChunkReply*) override;
 
-    grpc::Status CancelSubQuery(grpc::ServerContext* context,
-                                const mini2::query::CancelSubQueryRequest* request,
-                                mini2::query::CancelSubQueryReply* response) override;
+    grpc::Status CancelSubQuery(grpc::ServerContext*,
+                                const mini2::query::CancelSubQueryRequest*,
+                                mini2::query::CancelSubQueryReply*) override;
 
 private:
     std::string selfNodeId_;

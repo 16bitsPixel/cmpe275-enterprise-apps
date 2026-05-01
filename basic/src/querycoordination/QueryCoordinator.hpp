@@ -6,6 +6,7 @@
 
 #include "../model/QueryRequest.hpp"
 #include "../model/QueryResult.hpp"
+#include "../model/TaxiTrip.hpp"
 #include "RequestState.hpp"
 #include "WorkerNode.hpp"
 
@@ -30,6 +31,16 @@
 class QueryCoordinator
 {
 public:
+    struct RpcChunkResult
+    {
+        bool found = false;
+        bool done = false;
+        std::string requestId;
+        std::string message;
+        std::vector<TaxiTrip> trips;
+    };
+
+public:
     QueryCoordinator();
 
     /*
@@ -48,6 +59,26 @@ public:
     QueryResult runExecute(QueryRequest &request);
 
     /*
+     * RPC-facing adapter: submit a client query.
+     * If the request does not already have a query ID, one is assigned.
+     */
+    std::string submitClientQuery(QueryRequest request);
+
+    /*
+     * RPC-facing adapter: submit a subquery.
+     * Parent request ID is preserved if your QueryRequest supports it.
+     */
+    std::string submitSubQuery(QueryRequest request, const std::string &parentRequestId);
+
+    /*
+     * RPC-facing adapter: fetch a chunk for a request ID.
+     *
+     * For COUNT queries, this returns no rows and marks done=true once available.
+     * For EXECUTE queries, this chunks from cached aggregated results.
+     */
+    RpcChunkResult fetchChunkForRpc(const std::string &requestId, std::size_t maxRows);
+
+    /*
      * Mark a request as timed out.
      */
     void handleTimeout(const std::string &queryId);
@@ -56,6 +87,11 @@ public:
      * Mark a request as cancelled.
      */
     void cancelQuery(const std::string &queryId);
+
+    /*
+     * RPC-facing adapter for cancellation.
+     */
+    bool cancel(const std::string &queryId, std::string &message);
 
 private:
     /*
@@ -125,6 +161,21 @@ private:
      */
     void updateQueryState(const std::string &queryId, QueryState newState);
 
+    /*
+     * Assign a query ID if the incoming request does not already have one.
+     */
+    std::string ensureQueryId(QueryRequest &request);
+
+    /*
+     * Materialize TaxiTrip rows for RPC from cached RowRef chunk.
+     *
+     * This assumes WorkerNode can materialize a RowRef into a TaxiTrip,
+     * or that you add such a helper there. If not available yet, return empty rows.
+     */
+    std::vector<TaxiTrip> materializeTripsForChunk(const QueryResult &result,
+                                                   std::size_t start,
+                                                   std::size_t count) const;
+
 private:
     /*
      * Registered worker nodes used for current simulation/execution.
@@ -136,4 +187,9 @@ private:
      * Vector is acceptable for current Mini 2 scale.
      */
     std::vector<RequestState> queryStates_;
+
+    /*
+     * Local sequence used when RPC callers do not provide query IDs.
+     */
+    std::size_t nextQuerySeq_ = 1;
 };

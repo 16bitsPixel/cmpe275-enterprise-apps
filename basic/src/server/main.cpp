@@ -5,14 +5,13 @@
 #include <grpcpp/grpcpp.h>
 
 #include "../common/config.h"
-// #include "../dataset/PartitionLoader.hpp"
-#include "../dataset/PartitionStore.hpp"
+#include "../dataset/PartitionLoader.hpp"
+#include "../model/NodeInfo.hpp"
 #include "../model/OverlayConfig.hpp"
-#include "../query/LocalQueryEngine.hpp"
-#include "../query/QueryCoordinator.hpp"
-#include "../server/BasecampServiceImpl.hpp"
-#include "../server/QueryServiceImpl.hpp"
-#include "../transport/GrpcRemoteQueryClient.hpp"
+#include "../querycoordination/QueryCoordinator.hpp"
+#include "../querycoordination/WorkerNode.hpp"
+#include "./BasecampServiceImpl.hpp"
+#include "./QueryServiceImpl.hpp"
 
 using grpc::Server;
 using grpc::ServerBuilder;
@@ -20,22 +19,25 @@ using grpc::ServerBuilder;
 static OverlayConfig buildOverlayFromNodeConfig(const NodeConfig& cfg) {
     OverlayConfig overlay;
 
-    OverlayNodeInfo self;
+    NodeInfo self;
     self.nodeId = cfg.nodeId;
-    self.host = "127.0.0.1"; // for local dev; change if you have explicit advertised host
+    self.host = "127.0.0.1";   // local-dev advertised host
     self.port = cfg.listenPort;
+
     for (const auto& n : cfg.neighbors) {
         self.neighbors.push_back(n.nodeId);
 
-        OverlayNodeInfo child;
-        child.nodeId = n.nodeId;
-        child.host = n.host;
-        child.port = n.port;
-        overlay.addNode(child);
+        NodeInfo peer;
+        peer.nodeId = n.nodeId;
+        peer.host = n.host;
+        peer.port = n.port;
+
+        overlay.addNode(peer);
     }
 
     overlay.addNode(self);
     overlay.setSelfNodeId(cfg.nodeId);
+
     return overlay;
 }
 
@@ -51,29 +53,42 @@ int main(int argc, char** argv) {
 
         std::cout << "Using config: " << configPath << "\n";
 
-        // Build overlay
+        // ------------------------------------------------
+        // Overlay / node identity
+        // ------------------------------------------------
         OverlayConfig overlay = buildOverlayFromNodeConfig(cfg);
 
-        // Load local shard
-        PartitionStore store;
+        NodeInfo selfInfo;
+        selfInfo.nodeId = cfg.nodeId;
+        selfInfo.host = "127.0.0.1";
+        selfInfo.port = cfg.listenPort;
 
-        // leave store empty or plug in shard loading
+        for (const auto& n : cfg.neighbors) {
+            selfInfo.neighbors.push_back(n.nodeId);
+        }
 
-        // Query engine + coordinator
-        LocalQueryEngine localEngine;
+        // ------------------------------------------------
+        // Local worker owns its own PartitionStore
+        // ------------------------------------------------
+        WorkerNode localWorker(selfInfo);
 
-        auto remoteClient = std::make_shared<GrpcRemoteQueryClient>(cfg.nodeId, overlay);
+        // Optional next step:
+        // load assigned shard files into localWorker.getStore()
+        //
+        // Example later, if your PartitionLoader supports it:
+        // PartitionLoader loader;
+        // loader.loadAssignedFiles(..., localWorker.getStore());
 
-        QueryCoordinator coordinator(
-            cfg.nodeId,
-            store,
-            overlay,
-            localEngine,
-            remoteClient
-        );
+        // ------------------------------------------------
+        // Coordinator
+        // ------------------------------------------------
+        QueryCoordinator coordinator;
+        coordinator.addWorker(localWorker);
 
+        // ------------------------------------------------
         // Services
-        NodeServiceImpl basecampService(cfg);
+        // ------------------------------------------------
+        BasecampServiceImpl basecampService(cfg);
         if (!basecampService.setup()) {
             std::cerr << "Basecamp service setup failed\n";
             return 2;
@@ -81,7 +96,9 @@ int main(int argc, char** argv) {
 
         QueryServiceImpl queryService(cfg.nodeId, coordinator);
 
+        // ------------------------------------------------
         // Start server
+        // ------------------------------------------------
         ServerBuilder builder;
         builder.AddListeningPort(cfg.listenTarget(), grpc::InsecureServerCredentials());
         builder.RegisterService(&basecampService);

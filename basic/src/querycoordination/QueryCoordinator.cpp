@@ -1,6 +1,10 @@
 #include "QueryCoordinator.hpp"
 
 #include <algorithm>
+#include <chrono>
+#include <cstdint>
+#include <iostream>
+#include <sstream>
 #include <vector>
 
 QueryCoordinator::QueryCoordinator() = default;
@@ -14,7 +18,7 @@ QueryResult QueryCoordinator::runCount(QueryRequest &request)
 {
     std::cout << "\nRunning COUNT query: " << request.getQueryId() << std::endl;
 
-    auto start = std::chrono::high_resolution_clock::now(); // Start time
+    auto start = std::chrono::high_resolution_clock::now();
 
     RequestState &state = createRequestState(request);
     state.setState(QueryState::IN_PROGRESS);
@@ -39,11 +43,11 @@ QueryResult QueryCoordinator::runCount(QueryRequest &request)
         state.setState(QueryState::COMPLETED);
     }
 
-    auto end = std::chrono::high_resolution_clock::now(); // End time
-    std::chrono::duration<double> duration = end - start; // Calculate duration
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration = end - start;
 
     std::cout << "COUNT query completed: " << request.getQueryId() << std::endl;
-    std::cout << "Execution time (ms): " << duration.count() * 1000 << "ms" << std::endl; // Log execution time
+    std::cout << "Execution time (ms): " << duration.count() * 1000 << "ms" << std::endl;
 
     return result;
 }
@@ -52,7 +56,7 @@ QueryResult QueryCoordinator::runExecute(QueryRequest &request)
 {
     std::cout << "\nRunning EXECUTE query: " << request.getQueryId() << std::endl;
 
-    auto start = std::chrono::high_resolution_clock::now(); // Start time
+    auto start = std::chrono::high_resolution_clock::now();
 
     RequestState &state = createRequestState(request);
     state.setState(QueryState::IN_PROGRESS);
@@ -77,13 +81,116 @@ QueryResult QueryCoordinator::runExecute(QueryRequest &request)
         state.setState(QueryState::COMPLETED);
     }
 
-    auto end = std::chrono::high_resolution_clock::now(); // End time
-    std::chrono::duration<double> duration = end - start; // Calculate duration
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration = end - start;
 
     std::cout << "EXECUTE query completed: " << request.getQueryId() << std::endl;
-    std::cout << "Execution time (ms): " << duration.count() * 1000 << "ms" << std::endl; // Log execution time
+    std::cout << "Execution time (ms): " << duration.count() * 1000 << "ms" << std::endl;
 
     return result;
+}
+
+std::string QueryCoordinator::submitClientQuery(QueryRequest request)
+{
+    const std::string queryId = ensureQueryId(request);
+
+    if (request.getQueryType() == QueryType::Count)
+    {
+        runCount(request);
+    }
+    else
+    {
+        runExecute(request);
+    }
+
+    return queryId;
+}
+
+std::string QueryCoordinator::submitSubQuery(QueryRequest request, const std::string &parentRequestId)
+{
+    const std::string queryId = ensureQueryId(request);
+
+    // Current QueryRequest does not store parentRequestId.
+    (void)parentRequestId;
+
+    request.distributedAllowed = false;
+
+    if (request.getQueryType() == QueryType::Count)
+    {
+        runCount(request);
+    }
+    else
+    {
+        runExecute(request);
+    }
+
+    return queryId;
+}
+
+QueryCoordinator::RpcChunkResult QueryCoordinator::fetchChunkForRpc(const std::string &requestId,
+                                                                    std::size_t maxRows)
+{
+    RpcChunkResult out{};
+    out.requestId = requestId;
+
+    RequestState *state = findRequestState(requestId);
+    if (state == nullptr)
+    {
+        out.found = false;
+        out.done = true;
+        out.message = "request not found";
+        return out;
+    }
+
+    out.found = true;
+
+    if (state->getState() == QueryState::CANCELLED)
+    {
+        out.done = true;
+        out.message = "request cancelled";
+        return out;
+    }
+
+    if (state->getState() == QueryState::TIMED_OUT)
+    {
+        out.done = true;
+        out.message = "request timed out";
+        return out;
+    }
+
+    const QueryResult &agg = state->getAggregatedResult();
+
+    // COUNT queries return no trips, only completion info.
+    if (state->getRequest().getQueryType() == QueryType::Count)
+    {
+        out.done = true;
+        out.message = "count complete";
+        return out;
+    }
+
+    const std::size_t start = state->getNextUnreadIndex();
+    const std::size_t available = agg.matchedRows.size();
+
+    if (start >= available)
+    {
+        out.done = true;
+        out.message = "done";
+        return out;
+    }
+
+    const std::size_t take = std::min(
+        maxRows == 0 ? std::size_t(64) : maxRows,
+        available - start
+    );
+
+    out.trips = materializeTripsForChunk(agg, start, take);
+
+    state->setNextUnreadIndex(start + take);
+
+    out.done = (state->getNextUnreadIndex() >= available);
+    out.message = out.done ? "done" : "more";
+
+    return out;
 }
 
 void QueryCoordinator::handleTimeout(const std::string &queryId)
@@ -94,6 +201,20 @@ void QueryCoordinator::handleTimeout(const std::string &queryId)
 void QueryCoordinator::cancelQuery(const std::string &queryId)
 {
     updateQueryState(queryId, QueryState::CANCELLED);
+}
+
+bool QueryCoordinator::cancel(const std::string &queryId, std::string &message)
+{
+    RequestState *state = findRequestState(queryId);
+    if (state == nullptr)
+    {
+        message = "request not found";
+        return false;
+    }
+
+    state->setState(QueryState::CANCELLED);
+    message = "cancelled";
+    return true;
 }
 
 bool QueryCoordinator::canProcessLocally(const QueryRequest &request) const
@@ -268,6 +389,7 @@ QueryResult QueryCoordinator::aggregateExecuteResults(const std::vector<QueryRes
                                       result.matchedRows.end());
     }
 
+    (void)request;
     return aggregated;
 }
 
@@ -318,4 +440,45 @@ void QueryCoordinator::updateQueryState(const std::string &queryId, QueryState n
     {
         state->setState(newState);
     }
+}
+
+std::string QueryCoordinator::ensureQueryId(QueryRequest &request)
+{
+    if (!request.getQueryId().empty())
+    {
+        return request.getQueryId();
+    }
+
+    std::ostringstream oss;
+    oss << "q-" << nextQuerySeq_++;
+    request.setQueryId(oss.str());
+    return request.getQueryId();
+}
+
+std::vector<TaxiTrip> QueryCoordinator::materializeTripsForChunk(const QueryResult &result,
+                                                                 std::size_t start,
+                                                                 std::size_t count) const
+{
+    std::vector<TaxiTrip> trips;
+
+    if (start >= result.matchedRows.size() || count == 0)
+    {
+        return trips;
+    }
+
+    const std::size_t end = std::min(start + count, result.matchedRows.size());
+    trips.reserve(end - start);
+
+    for (std::size_t i = start; i < end; ++i)
+    {
+        const RowRef &ref = result.matchedRows[i];
+
+        // TODO:
+        // Replace this with real row materialization from WorkerNode / PartitionStore.
+        // For now, return an empty/default TaxiTrip carrying only a row ID if available.
+        TaxiTrip trip{};
+        trips.push_back(trip);
+    }
+
+    return trips;
 }

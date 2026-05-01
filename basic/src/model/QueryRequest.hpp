@@ -24,34 +24,31 @@ struct Range
  */
 enum class QueryType
 {
-    Count,  // return count only
-    Execute // return row IDs / results
+    Count,   // return count only
+    Execute  // return row IDs / results
 };
 
 /*
  * QueryRequest
  * ------------
  * Represents a distributed query request.
- *
- * Used by:
- * - QueryCoordinator (routing)
- * - WorkerNode (execution)
- * - LocalQueryEngine (filter evaluation)
  */
 class QueryRequest
 {
 public:
-    QueryRequest(std::string id, QueryType type)
+    QueryRequest(std::string id = "", QueryType type = QueryType::Execute)
         : queryId(std::move(id)), queryType(type)
     {
     }
 
-    /*
-     * Unique identifier for distributed request tracking.
-     */
     const std::string &getQueryId() const
     {
         return queryId;
+    }
+
+    void setQueryId(const std::string &id)
+    {
+        queryId = id;
     }
 
     QueryType getQueryType() const
@@ -59,21 +56,19 @@ public:
         return queryType;
     }
 
+    void setQueryType(QueryType type)
+    {
+        queryType = type;
+    }
+
 public:
     /*
      * ==== Distributed metadata ====
      */
 
-    // Node where request originated
     std::string originNodeId;
-
-    // Entry node (usually "A")
     std::string entryNodeId;
-
-    // Optional direct routing (debug / targeted execution)
     std::optional<std::string> targetNodeId;
-
-    // Allow distributed execution
     bool distributedAllowed = true;
 
     /*
@@ -91,20 +86,14 @@ public:
      * ==== Pagination (global/client-level) ====
      */
 
-    // Skip first N matching rows globally
     std::size_t offset = 0;
-
-    // Return next N rows globally
     std::size_t limit = 0;
 
     /*
      * ==== Chunk execution (worker-level) ====
      */
 
-    // Start scanning from this row index (for resume)
     std::size_t startRow = 0;
-
-    // Maximum number of matches to return in this chunk
     std::size_t chunkSize = 0;
 
 private:

@@ -1,7 +1,6 @@
 #include "GrpcRemoteQueryClient.hpp"
 
 #include <chrono>
-#include <stdexcept>
 
 #include "QueryProtoConverters.hpp"
 
@@ -22,8 +21,37 @@ bool GrpcRemoteQueryClient::submitSubQuery(const std::string& targetNodeId,
         return false;
     }
 
-    mini2::query::SubmitSubQueryRequest req =
-        QueryProtoConverters::toProtoSubmitSubQueryRequest(request, parentRequestId, selfNodeId_);
+    mini2::query::SubmitSubQueryRequest req;
+    req.set_parent_request_id(parentRequestId);
+    req.set_origin_node_id(selfNodeId_);
+
+    // If you later want a full toProtoSubmitSubQueryRequest helper, add it.
+    QueryRequest local = request;
+    if (local.pickupRange) {
+        req.mutable_filter()->mutable_pickup_range()->set_lo(local.pickupRange->lo);
+        req.mutable_filter()->mutable_pickup_range()->set_hi(local.pickupRange->hi);
+    }
+    if (local.dropoffRange) {
+        req.mutable_filter()->mutable_dropoff_range()->set_lo(local.dropoffRange->lo);
+        req.mutable_filter()->mutable_dropoff_range()->set_hi(local.dropoffRange->hi);
+    }
+    if (local.distanceRange) {
+        req.mutable_filter()->mutable_distance_range()->set_lo(local.distanceRange->lo);
+        req.mutable_filter()->mutable_distance_range()->set_hi(local.distanceRange->hi);
+    }
+    if (local.totalCentsRange) {
+        req.mutable_filter()->mutable_total_cents_range()->set_lo(local.totalCentsRange->lo);
+        req.mutable_filter()->mutable_total_cents_range()->set_hi(local.totalCentsRange->hi);
+    }
+    if (local.tipCentsRange) {
+        req.mutable_filter()->mutable_tip_cents_range()->set_lo(local.tipCentsRange->lo);
+        req.mutable_filter()->mutable_tip_cents_range()->set_hi(local.tipCentsRange->hi);
+    }
+    if (local.paymentType) {
+        req.mutable_filter()->set_payment_type(*local.paymentType);
+    }
+
+    req.set_preferred_chunk_size(local.preferredChunkSize);
 
     mini2::query::SubmitSubQueryReply resp;
     grpc::ClientContext ctx;
@@ -43,11 +71,11 @@ bool GrpcRemoteQueryClient::submitSubQuery(const std::string& targetNodeId,
 
 bool GrpcRemoteQueryClient::fetchSubChunk(const std::string& targetNodeId,
                                           const std::string& remoteRequestId,
-                                          size_t maxRows,
-                                          std::vector<QueryResultRow>& rows,
+                                          std::size_t maxRows,
+                                          std::vector<TaxiTrip>& trips,
                                           bool& done,
                                           std::string& message) {
-    rows.clear();
+    trips.clear();
     done = false;
 
     auto* stub = getOrCreateStub(targetNodeId);
@@ -76,7 +104,30 @@ bool GrpcRemoteQueryClient::fetchSubChunk(const std::string& targetNodeId,
         return false;
     }
 
-    rows = QueryProtoConverters::fromProtoRows(resp.rows());
+    for (const auto& row : resp.rows()) {
+        TaxiTrip trip{};
+        trip.rowId = row.row_id();
+        trip.vendorId = row.vendor_id();
+        trip.pickupDatetime = row.pickup_datetime();
+        trip.dropoffDatetime = row.dropoff_datetime();
+        trip.passengerCount = row.passenger_count();
+        trip.tripDistance = row.trip_distance();
+        trip.rateCodeId = row.rate_code_id();
+        trip.storeAndFwdFlag = row.store_and_fwd_flag().empty() ? '\0' : row.store_and_fwd_flag()[0];
+        trip.puLocationId = row.pu_location_id();
+        trip.doLocationId = row.do_location_id();
+        trip.paymentType = row.payment_type();
+        trip.fareAmount = row.fare_amount();
+        trip.extra = row.extra();
+        trip.mtaTax = row.mta_tax();
+        trip.tipAmount = row.tip_amount();
+        trip.tollsAmount = row.tolls_amount();
+        trip.improvementSurcharge = row.improvement_surcharge();
+        trip.totalAmount = row.total_amount();
+        trip.congestionSurcharge = row.congestion_surcharge();
+        trips.push_back(trip);
+    }
+
     done = resp.done();
     message = resp.message();
     return true;
@@ -130,11 +181,5 @@ mini2::query::QueryService::Stub* GrpcRemoteQueryClient::getOrCreateStub(const s
 }
 
 std::string GrpcRemoteQueryClient::resolveTarget(const std::string& targetNodeId) const {
-    // Adapt to OverlayConfig API.
-    // Expected format: host:port
-    //
-    // Example:
-    //   return overlay_.endpointFor(targetNodeId);
-    //
     return overlay_.endpointFor(targetNodeId);
 }

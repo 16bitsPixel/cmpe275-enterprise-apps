@@ -1,44 +1,43 @@
 #pragma once
 
 #include <string>
-#include <vector>
 
 #include "../model/QueryRequest.hpp"
-#include "../model/QueryResult.hpp"
+#include "../model/TaxiTrip.hpp"
 #include "query.pb.h"
 
 namespace QueryProtoConverters {
 
-// ---------- QueryRequest / QueryFilter ----------
-
-mini2::query::QueryFilter toProtoFilter(const QueryRequest& in);
-QueryRequest fromProtoFilter(const mini2::query::QueryFilter& in);
-
-// ---------- SubmitQuery ----------
-
-mini2::query::SubmitQueryRequest toProtoSubmitQueryRequest(const QueryRequest& in);
+// request conversion
 QueryRequest fromProtoSubmitQueryRequest(const mini2::query::SubmitQueryRequest& in);
-
-// ---------- SubmitSubQuery ----------
-
-mini2::query::SubmitSubQueryRequest toProtoSubmitSubQueryRequest(
-    const QueryRequest& in,
-    const std::string& parentRequestId,
-    const std::string& originNodeId
-);
-
 QueryRequest fromProtoSubmitSubQueryRequest(const mini2::query::SubmitSubQueryRequest& in);
 
-// ---------- TripRow / QueryResultRow ----------
+// reply helpers
+void fillSubmitQueryReply(bool accepted,
+                          const std::string& requestId,
+                          const std::string& nodeId,
+                          const std::string& message,
+                          mini2::query::SubmitQueryReply* out);
 
-mini2::query::TripRow toProtoTripRow(const QueryResultRow& in);
-QueryResultRow fromProtoTripRow(const mini2::query::TripRow& in);
+void fillSubmitSubQueryReply(bool accepted,
+                             const std::string& requestId,
+                             const std::string& nodeId,
+                             const std::string& message,
+                             mini2::query::SubmitSubQueryReply* out);
 
-void appendProtoRows(const std::vector<QueryResultRow>& rows,
-                     google::protobuf::RepeatedPtrField<mini2::query::TripRow>* out);
+void fillCancelQueryReply(bool success,
+                          const std::string& requestId,
+                          const std::string& nodeId,
+                          const std::string& message,
+                          mini2::query::CancelQueryReply* out);
 
-std::vector<QueryResultRow> fromProtoRows(
-    const google::protobuf::RepeatedPtrField<mini2::query::TripRow>& rows
-);
+void fillCancelSubQueryReply(bool success,
+                             const std::string& requestId,
+                             const std::string& nodeId,
+                             const std::string& message,
+                             mini2::query::CancelSubQueryReply* out);
+
+// row conversion
+mini2::query::TripRow toProtoTripRow(const TaxiTrip& trip, const std::string& sourceNodeId);
 
 } // namespace QueryProtoConverters

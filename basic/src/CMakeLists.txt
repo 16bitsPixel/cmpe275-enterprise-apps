@@ -1,161 +1,239 @@
-# src files. For inlined headers, include header as a source
-set(lib-srcs
-    stuff/aclass.cpp
-)
+cmake_minimum_required(VERSION 3.20)
+project(cmpe275_mini2 LANGUAGES CXX)
 
-# library targets
-add_library(stuff ${lib-srcs})
-target_link_libraries(stuff PRIVATE ${Boost_LIBRARIES} ${SOCKET_LIBRARY})
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
-# dependencies
-set(BUILD_LIBRARIES stuff pthread)
+if(APPLE)
+    add_compile_options(-stdlib=libc++)
+    add_link_options(-stdlib=libc++)
+endif()
 
-# ============================================================
-# OpenMP detection (cross-platform)
-# ============================================================
+find_package(Threads REQUIRED)
+find_package(Protobuf CONFIG REQUIRED)
+find_package(gRPC CONFIG REQUIRED)
 find_package(OpenMP)
 
-if(APPLE)
-    message(STATUS "Apple detected: using Homebrew libomp flags")
-elseif(OpenMP_CXX_FOUND)
-    message(STATUS "Found OpenMP")
+set(_PROTOBUF_LIBPROTOBUF protobuf::libprotobuf)
+set(_GRPC_GRPCPP gRPC::grpc++)
+set(_REFLECTION gRPC::grpc++_reflection)
+
+if(CMAKE_CROSSCOMPILING)
+    find_program(_PROTOBUF_PROTOC protoc REQUIRED)
+    find_program(_GRPC_CPP_PLUGIN_EXECUTABLE grpc_cpp_plugin REQUIRED)
 else()
-    message(FATAL_ERROR "OpenMP not found")
+    set(_PROTOBUF_PROTOC $<TARGET_FILE:protobuf::protoc>)
+    set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:gRPC::grpc_cpp_plugin>)
 endif()
 
-# ============================================================
-# App target: mini1A (implementationA)
-# ============================================================
-add_executable(mini1A
-    apps/implementationA/main.cpp
-    apps/implementationA/phase1/csvReader.cpp
-    apps/implementationA/taxiTripParser.cpp
-    apps/implementationA/taxiTripStore.cpp
-    apps/implementationA/taxiTripQuerySpec.cpp
-    apps/implementationA/benchmarkRunner.cpp
-    apps/implementationA/phase2/query.cpp
-    apps/implementationA/phase2/ingest.cpp
-    apps/implementationA/phase3/query_soa.cpp
-    apps/implementationA/phase3/ingest_soa.cpp
-)
+set(GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
+file(MAKE_DIRECTORY "${GENERATED_DIR}")
 
-if(APPLE)
-    target_include_directories(mini1A PRIVATE /opt/homebrew/opt/libomp/include)
-    target_compile_options(mini1A PRIVATE -Xpreprocessor -fopenmp)
-    target_link_libraries(mini1A PRIVATE ${BUILD_LIBRARIES} /opt/homebrew/opt/libomp/lib/libomp.dylib)
-else()
-    target_link_libraries(mini1A PRIVATE ${BUILD_LIBRARIES} OpenMP::OpenMP_CXX)
-endif()
+# =========================================================
+# Proto helper
+# =========================================================
+function(add_grpc_proto_library TARGET_NAME PROTO_FILE)
+    get_filename_component(PROTO_ABS "${PROTO_FILE}" ABSOLUTE)
+    get_filename_component(PROTO_DIR "${PROTO_ABS}" PATH)
+    get_filename_component(PROTO_NAME_WE "${PROTO_ABS}" NAME_WE)
 
-target_compile_features(mini1A PRIVATE cxx_std_17)
+    set(PROTO_SRCS "${GENERATED_DIR}/${PROTO_NAME_WE}.pb.cc")
+    set(PROTO_HDRS "${GENERATED_DIR}/${PROTO_NAME_WE}.pb.h")
+    set(GRPC_SRCS  "${GENERATED_DIR}/${PROTO_NAME_WE}.grpc.pb.cc")
+    set(GRPC_HDRS  "${GENERATED_DIR}/${PROTO_NAME_WE}.grpc.pb.h")
 
-# ============================================================
-# Phase 1/2 streaming implementation (your dataset + predicates)
-# ============================================================
-set(phase1-srcs
-    taxi/BufferedFileReader.cpp
-    taxi_implementation/TaxiTripCSVParser.cpp
-    dataset/TaxiTripDataset.cpp
-    metrics/BenchmarkRunner.cpp
-)
+    add_custom_command(
+        OUTPUT
+            "${PROTO_SRCS}" "${PROTO_HDRS}"
+            "${GRPC_SRCS}"  "${GRPC_HDRS}"
+        COMMAND ${_PROTOBUF_PROTOC}
+        ARGS
+            --grpc_out "${GENERATED_DIR}"
+            --cpp_out "${GENERATED_DIR}"
+            -I "${PROTO_DIR}"
+            --plugin=protoc-gen-grpc="${_GRPC_CPP_PLUGIN_EXECUTABLE}"
+            "${PROTO_ABS}"
+        DEPENDS "${PROTO_ABS}"
+        VERBATIM
+    )
 
-add_library(phase1lib ${phase1-srcs})
+    add_library(${TARGET_NAME}
+        "${PROTO_SRCS}"
+        "${PROTO_HDRS}"
+        "${GRPC_SRCS}"
+        "${GRPC_HDRS}"
+    )
 
-target_include_directories(phase1lib PUBLIC
-    ${CMAKE_CURRENT_LIST_DIR}
-)
+    target_include_directories(${TARGET_NAME}
+        PUBLIC
+            "${GENERATED_DIR}"
+    )
 
-target_compile_features(phase1lib PUBLIC cxx_std_17)
-target_link_libraries(phase1lib PRIVATE ${Boost_LIBRARIES} ${SOCKET_LIBRARY})
+    target_link_libraries(${TARGET_NAME}
+        PUBLIC
+            ${_REFLECTION}
+            ${_GRPC_GRPCPP}
+            ${_PROTOBUF_LIBPROTOBUF}
+    )
+endfunction()
 
-# Executables for Phase 1 and Phase 2 streaming
-add_executable(streamingmain apps/streamingmain.cpp)
-target_link_libraries(streamingmain PRIVATE phase1lib ${BUILD_LIBRARIES})
-target_compile_features(streamingmain PRIVATE cxx_std_17)
-
-# ============================================================
-# OpenMP flags for macOS (Homebrew libomp)
-# ============================================================
-if(APPLE)
-    # Enable OpenMP for the library
-    target_include_directories(phase1lib PUBLIC /opt/homebrew/opt/libomp/include)
-    target_compile_options(phase1lib PUBLIC -Xpreprocessor -fopenmp)
-    target_link_libraries(phase1lib PUBLIC /opt/homebrew/opt/libomp/lib/libomp.dylib)
-
-    # Enable OpenMP for the executables
-    target_compile_options(streamingmain PRIVATE -Xpreprocessor -fopenmp)
-    target_link_libraries(streamingmain PRIVATE /opt/homebrew/opt/libomp/lib/libomp.dylib)
-else()
-    # Non-Apple platforms: link OpenMP properly if found
+# =========================================================
+# OpenMP helper
+# =========================================================
+function(enable_target_openmp TARGET_NAME)
     if(OpenMP_CXX_FOUND)
-        target_link_libraries(phase1lib PUBLIC OpenMP::OpenMP_CXX)
-        target_link_libraries(streamingmain PRIVATE OpenMP::OpenMP_CXX)
+        target_link_libraries(${TARGET_NAME} PUBLIC OpenMP::OpenMP_CXX)
+    elseif(APPLE AND EXISTS "/opt/homebrew/opt/libomp/include" AND EXISTS "/opt/homebrew/opt/libomp/lib/libomp.dylib")
+        target_include_directories(${TARGET_NAME} PUBLIC /opt/homebrew/opt/libomp/include)
+        target_compile_options(${TARGET_NAME} PUBLIC -Xpreprocessor -fopenmp)
+        target_link_libraries(${TARGET_NAME} PUBLIC /opt/homebrew/opt/libomp/lib/libomp.dylib)
+    else()
+        message(STATUS "OpenMP not enabled for ${TARGET_NAME}")
     endif()
-endif()
-# ============================================================
-# Local query executable
-# ============================================================
-add_executable(localquery
-    apps/localquery_main.cpp
+endfunction()
+
+# =========================================================
+# Generated proto libraries
+# =========================================================
+add_grpc_proto_library(basecamp_grpc_proto "proto/basecamp.proto")
+add_grpc_proto_library(query_grpc_proto    "proto/query.proto")
+
+# =========================================================
+# Common include dirs
+# =========================================================
+set(PROJECT_INCLUDE_DIRS
+    "${GENERATED_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+)
+
+# =========================================================
+# Core library
+# =========================================================
+add_library(mini2_core
+    common/config.cc
+
+    model/OverlayConfig.cpp
+
     dataset/PartitionLoader.cpp
     dataset/TaxiTripDataset.cpp
+
     query/LocalQueryEngine.cpp
+
     querycoordination/QueryCoordinator.cpp
     querycoordination/RequestState.cpp
     querycoordination/WorkerNode.cpp
-    taxi/BufferedFileReader.cpp
-    taxi_implementation/TaxiTripCSVParser.cpp
-)
-target_include_directories(localquery PRIVATE
-    ${CMAKE_CURRENT_LIST_DIR}
-)
 
-target_compile_features(localquery PRIVATE cxx_std_17)
+    transport/QueryProtoConverters.cpp
+    transport/GrpcRemoteQueryClient.cpp
+    transport/node_stub.cc
 
-if(APPLE)
-    target_include_directories(localquery PRIVATE /opt/homebrew/opt/libomp/include)
-    target_compile_options(localquery PRIVATE -Xpreprocessor -fopenmp)
-    target_link_libraries(localquery PRIVATE
-        ${BUILD_LIBRARIES}
-        /opt/homebrew/opt/libomp/lib/libomp.dylib
-    )
-else()
-    target_link_libraries(localquery PRIVATE
-        ${BUILD_LIBRARIES}
-        OpenMP::OpenMP_CXX
-    )
-endif()
-# ============================================================
-# Distributed query executable
-# ============================================================
-add_executable(distributedquery
-    apps/distributedquery_main.cpp
-    dataset/PartitionLoader.cpp
-    dataset/TaxiTripDataset.cpp
-    query/LocalQueryEngine.cpp
-    querycoordination/QueryCoordinator.cpp
-    querycoordination/RequestState.cpp
-    querycoordination/WorkerNode.cpp
+    server/BasecampServiceImpl.cpp
+    server/QueryServiceImpl.cpp
+
     taxi/BufferedFileReader.cpp
     taxi_implementation/TaxiTripCSVParser.cpp
 )
 
-target_include_directories(distributedquery PRIVATE
-    ${CMAKE_CURRENT_LIST_DIR}
+target_include_directories(mini2_core
+    PUBLIC
+        ${PROJECT_INCLUDE_DIRS}
 )
 
-target_compile_features(distributedquery PRIVATE cxx_std_17)
+target_link_libraries(mini2_core
+    PUBLIC
+        basecamp_grpc_proto
+        query_grpc_proto
+        ${_REFLECTION}
+        ${_GRPC_GRPCPP}
+        ${_PROTOBUF_LIBPROTOBUF}
+        Threads::Threads
+)
 
-if(APPLE)
-    target_include_directories(distributedquery PRIVATE /opt/homebrew/opt/libomp/include)
-    target_compile_options(distributedquery PRIVATE -Xpreprocessor -fopenmp)
-    target_link_libraries(distributedquery PRIVATE
-        ${BUILD_LIBRARIES}
-        /opt/homebrew/opt/libomp/lib/libomp.dylib
+enable_target_openmp(mini2_core)
+
+# =========================================================
+# node_server
+# =========================================================
+add_executable(node_server
+    server/main.cpp
+)
+
+target_include_directories(node_server
+    PRIVATE
+        ${PROJECT_INCLUDE_DIRS}
+)
+
+target_link_libraries(node_server
+    PRIVATE
+        mini2_core
+)
+
+# =========================================================
+# basecamp_client
+# =========================================================
+add_executable(basecamp_client
+    client/basecamp_client.cc
+)
+
+target_include_directories(basecamp_client
+    PRIVATE
+        ${PROJECT_INCLUDE_DIRS}
+)
+
+target_link_libraries(basecamp_client
+    PRIVATE
+        mini2_core
+        basecamp_grpc_proto
+)
+
+# =========================================================
+# query_client
+# =========================================================
+add_executable(query_client
+    client/query_client.cc
+)
+
+target_include_directories(query_client
+    PRIVATE
+        ${PROJECT_INCLUDE_DIRS}
+)
+
+target_link_libraries(query_client
+    PRIVATE
+        mini2_core
+        query_grpc_proto
+)
+
+# =========================================================
+# Optional local / distributed app targets
+# Only build them if the app files exist.
+# =========================================================
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/apps/localquery_main.cpp")
+    add_executable(localquery
+        apps/localquery_main.cpp
     )
+    target_include_directories(localquery PRIVATE ${PROJECT_INCLUDE_DIRS})
+    target_link_libraries(localquery PRIVATE mini2_core)
+endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/apps/distributedquery_main.cpp")
+    add_executable(distributedquery
+        apps/distributedquery_main.cpp
+    )
+    target_include_directories(distributedquery PRIVATE ${PROJECT_INCLUDE_DIRS})
+    target_link_libraries(distributedquery PRIVATE mini2_core)
+endif()
+
+# =========================================================
+# Status
+# =========================================================
+message(STATUS "C++ standard: ${CMAKE_CXX_STANDARD}")
+message(STATUS "Generated proto dir: ${GENERATED_DIR}")
+if(OpenMP_CXX_FOUND)
+    message(STATUS "OpenMP: found")
+elseif(APPLE AND EXISTS "/opt/homebrew/opt/libomp/lib/libomp.dylib")
+    message(STATUS "OpenMP: using Homebrew libomp")
 else()
-    target_link_libraries(distributedquery PRIVATE
-        ${BUILD_LIBRARIES}
-        OpenMP::OpenMP_CXX
-    )
+    message(STATUS "OpenMP: not enabled")
 endif()

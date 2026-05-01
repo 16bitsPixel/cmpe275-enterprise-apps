@@ -1,20 +1,19 @@
 #pragma once
 
 #include <cstddef>
-#include <cstdint>
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include <grpcpp/grpcpp.h>
 
 #include "../model/OverlayConfig.hpp"
 #include "../model/QueryRequest.hpp"
-#include "../model/QueryResult.hpp"
-#include "../query/QueryCoordinator.hpp"
+#include "../model/TaxiTrip.hpp"
 #include "query.grpc.pb.h"
 
-class GrpcRemoteQueryClient final : public IRemoteQueryClient {
+class GrpcRemoteQueryClient {
 public:
     GrpcRemoteQueryClient(const std::string& selfNodeId,
                           const OverlayConfig& overlay);
@@ -23,18 +22,18 @@ public:
                         const QueryRequest& request,
                         const std::string& parentRequestId,
                         std::string& remoteRequestId,
-                        std::string& message) override;
+                        std::string& message);
 
     bool fetchSubChunk(const std::string& targetNodeId,
                        const std::string& remoteRequestId,
-                       size_t maxRows,
-                       std::vector<QueryResultRow>& rows,
+                       std::size_t maxRows,
+                       std::vector<TaxiTrip>& trips,
                        bool& done,
-                       std::string& message) override;
+                       std::string& message);
 
     bool cancelSubQuery(const std::string& targetNodeId,
                         const std::string& remoteRequestId,
-                        std::string& message) override;
+                        std::string& message);
 
 private:
     std::string selfNodeId_;
