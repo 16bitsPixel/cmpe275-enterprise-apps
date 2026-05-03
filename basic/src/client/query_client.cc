@@ -37,7 +37,7 @@ int main(int argc, char** argv) {
         bool doFetch = false;
         bool doCancel = false;
 
-        QueryRequest submitReq;
+        QueryRequest submitReq("", QueryType::Execute);
         std::string requestId;
         uint32_t maxRows = 64;
 
@@ -66,7 +66,7 @@ int main(int argc, char** argv) {
             } else if (arg == "--max-rows" && i + 1 < argc) {
                 maxRows = static_cast<uint32_t>(std::stoul(argv[++i]));
             } else if (arg == "--chunk-size" && i + 1 < argc) {
-                submitReq.preferredChunkSize = static_cast<uint32_t>(std::stoul(argv[++i]));
+                submitReq.chunkSize = static_cast<uint32_t>(std::stoul(argv[++i]));
             } else if (arg == "--payment-type" && i + 1 < argc) {
                 submitReq.paymentType = static_cast<int32_t>(std::stoi(argv[++i]));
             } else if (arg == "--distance-lo" && i + 1 < argc) {
@@ -112,16 +112,16 @@ int main(int argc, char** argv) {
         }
 
         if (hasDistanceLo && hasDistanceHi) {
-            submitReq.distanceRange = Range<float>{distanceLo, distanceHi};
+            submitReq.tripDistanceRange = Range<float>{distanceLo, distanceHi};
         }
         if (hasTotalLo && hasTotalHi) {
-            submitReq.totalCentsRange = Range<int32_t>{totalLo, totalHi};
+            submitReq.totalAmountRange = Range<int32_t>{totalLo, totalHi};
         }
         if (hasPickupLo && hasPickupHi) {
             submitReq.pickupRange = Range<int64_t>{pickupLo, pickupHi};
         }
-        if (submitReq.preferredChunkSize == 0) {
-            submitReq.preferredChunkSize = 64;
+        if (submitReq.chunkSize == 0) {
+            submitReq.chunkSize = 64;
         }
 
         auto stub = makeStub(target);
@@ -131,8 +131,38 @@ int main(int argc, char** argv) {
         }
 
         if (doSubmit) {
-            mini2::query::SubmitQueryRequest req =
-                QueryProtoConverters::toProtoSubmitQueryRequest(submitReq);
+            mini2::query::SubmitQueryRequest req;
+
+            if (submitReq.pickupRange) {
+                req.mutable_filter()->mutable_pickup_range()->set_lo(submitReq.pickupRange->lo);
+                req.mutable_filter()->mutable_pickup_range()->set_hi(submitReq.pickupRange->hi);
+            }
+
+            if (submitReq.dropoffRange) {
+                req.mutable_filter()->mutable_dropoff_range()->set_lo(submitReq.dropoffRange->lo);
+                req.mutable_filter()->mutable_dropoff_range()->set_hi(submitReq.dropoffRange->hi);
+            }
+
+            if (submitReq.tripDistanceRange) {
+                req.mutable_filter()->mutable_distance_range()->set_lo(submitReq.tripDistanceRange->lo);
+                req.mutable_filter()->mutable_distance_range()->set_hi(submitReq.tripDistanceRange->hi);
+            }
+
+            if (submitReq.totalAmountRange) {
+                req.mutable_filter()->mutable_total_cents_range()->set_lo(submitReq.totalAmountRange->lo);
+                req.mutable_filter()->mutable_total_cents_range()->set_hi(submitReq.totalAmountRange->hi);
+            }
+
+            if (submitReq.tipAmountRange) {
+                req.mutable_filter()->mutable_tip_cents_range()->set_lo(submitReq.tipAmountRange->lo);
+                req.mutable_filter()->mutable_tip_cents_range()->set_hi(submitReq.tipAmountRange->hi);
+            }
+
+            if (submitReq.paymentType) {
+                req.mutable_filter()->set_payment_type(*submitReq.paymentType);
+            }
+
+            req.set_preferred_chunk_size(static_cast<uint32_t>(submitReq.chunkSize));
 
             mini2::query::SubmitQueryReply resp;
             grpc::ClientContext ctx;

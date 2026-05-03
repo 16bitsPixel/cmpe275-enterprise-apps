@@ -116,25 +116,26 @@ mini2::query::TripRow toProtoTripRow(const TaxiTrip& trip, const std::string& so
     mini2::query::TripRow out;
 
     out.set_source_node_id(sourceNodeId);
-    out.set_row_id(static_cast<uint32_t>(trip.rowId));
-    out.set_vendor_id(trip.vendorId);
-    out.set_pickup_datetime(trip.pickupDatetime);
-    out.set_dropoff_datetime(trip.dropoffDatetime);
-    out.set_passenger_count(trip.passengerCount);
+
+    out.set_vendor_id(static_cast<int32_t>(trip.vendorId));
+    out.set_pickup_datetime(trip.pickupEpochMs);
+    out.set_dropoff_datetime(trip.dropoffEpochMs);
+    out.set_passenger_count(static_cast<int32_t>(trip.passengerCount));
     out.set_trip_distance(trip.tripDistance);
-    out.set_rate_code_id(trip.rateCodeId);
-    out.set_store_and_fwd_flag(std::string(1, trip.storeAndFwdFlag));
-    out.set_pu_location_id(trip.puLocationId);
-    out.set_do_location_id(trip.doLocationId);
-    out.set_payment_type(trip.paymentType);
-    out.set_fare_amount(trip.fareAmount);
-    out.set_extra(trip.extra);
-    out.set_mta_tax(trip.mtaTax);
-    out.set_tip_amount(trip.tipAmount);
-    out.set_tolls_amount(trip.tollsAmount);
-    out.set_improvement_surcharge(trip.improvementSurcharge);
-    out.set_total_amount(trip.totalAmount);
-    out.set_congestion_surcharge(trip.congestionSurcharge);
+    out.set_rate_code_id(static_cast<int32_t>(trip.rateCodeId));
+    out.set_store_and_fwd_flag(std::string(1, static_cast<char>(trip.storeAndFwd)));
+    out.set_pu_location_id(static_cast<int32_t>(trip.pickupLocationId));
+    out.set_do_location_id(static_cast<int32_t>(trip.dropLocationId));
+    out.set_payment_type(static_cast<int32_t>(trip.paymentType));
+
+    out.set_fare_amount(trip.fareAmountCents);
+    out.set_extra(trip.extraCents);
+    out.set_mta_tax(trip.mtaTaxCents);
+    out.set_tip_amount(trip.tipAmountCents);
+    out.set_tolls_amount(trip.tollsAmountCents);
+    out.set_improvement_surcharge(trip.improvementSurchargeCents);
+    out.set_total_amount(trip.totalAmountCents);
+    out.set_congestion_surcharge(trip.congestionSurchargeCents);
 
     return out;
 }

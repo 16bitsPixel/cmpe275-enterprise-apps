@@ -25,8 +25,6 @@ static OverlayConfig buildOverlayFromNodeConfig(const NodeConfig& cfg) {
     self.port = cfg.listenPort;
 
     for (const auto& n : cfg.neighbors) {
-        self.neighbors.push_back(n.nodeId);
-
         NodeInfo peer;
         peer.nodeId = n.nodeId;
         peer.host = n.host;
@@ -63,10 +61,6 @@ int main(int argc, char** argv) {
         selfInfo.host = "127.0.0.1";
         selfInfo.port = cfg.listenPort;
 
-        for (const auto& n : cfg.neighbors) {
-            selfInfo.neighbors.push_back(n.nodeId);
-        }
-
         // ------------------------------------------------
         // Local worker owns its own PartitionStore
         // ------------------------------------------------
@@ -88,7 +82,7 @@ int main(int argc, char** argv) {
         // ------------------------------------------------
         // Services
         // ------------------------------------------------
-        BasecampServiceImpl basecampService(cfg);
+        NodeServiceImpl basecampService(cfg);
         if (!basecampService.setup()) {
             std::cerr << "Basecamp service setup failed\n";
             return 2;

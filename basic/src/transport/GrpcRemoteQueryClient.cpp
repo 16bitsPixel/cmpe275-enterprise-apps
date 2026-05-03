@@ -1,6 +1,7 @@
 #include "GrpcRemoteQueryClient.hpp"
 
 #include <chrono>
+#include <cstdint>
 
 #include "QueryProtoConverters.hpp"
 
@@ -35,23 +36,23 @@ bool GrpcRemoteQueryClient::submitSubQuery(const std::string& targetNodeId,
         req.mutable_filter()->mutable_dropoff_range()->set_lo(local.dropoffRange->lo);
         req.mutable_filter()->mutable_dropoff_range()->set_hi(local.dropoffRange->hi);
     }
-    if (local.distanceRange) {
-        req.mutable_filter()->mutable_distance_range()->set_lo(local.distanceRange->lo);
-        req.mutable_filter()->mutable_distance_range()->set_hi(local.distanceRange->hi);
+    if (local.tripDistanceRange) {
+        req.mutable_filter()->mutable_distance_range()->set_lo(local.tripDistanceRange->lo);
+        req.mutable_filter()->mutable_distance_range()->set_hi(local.tripDistanceRange->hi);
     }
-    if (local.totalCentsRange) {
-        req.mutable_filter()->mutable_total_cents_range()->set_lo(local.totalCentsRange->lo);
-        req.mutable_filter()->mutable_total_cents_range()->set_hi(local.totalCentsRange->hi);
+    if (local.totalAmountRange) {
+        req.mutable_filter()->mutable_total_cents_range()->set_lo(local.totalAmountRange->lo);
+        req.mutable_filter()->mutable_total_cents_range()->set_hi(local.totalAmountRange->hi);
     }
-    if (local.tipCentsRange) {
-        req.mutable_filter()->mutable_tip_cents_range()->set_lo(local.tipCentsRange->lo);
-        req.mutable_filter()->mutable_tip_cents_range()->set_hi(local.tipCentsRange->hi);
+    if (local.tipAmountRange) {
+        req.mutable_filter()->mutable_tip_cents_range()->set_lo(local.tipAmountRange->lo);
+        req.mutable_filter()->mutable_tip_cents_range()->set_hi(local.tipAmountRange->hi);
     }
     if (local.paymentType) {
         req.mutable_filter()->set_payment_type(*local.paymentType);
     }
 
-    req.set_preferred_chunk_size(local.preferredChunkSize);
+    req.set_preferred_chunk_size(static_cast<uint32_t>(local.chunkSize));
 
     mini2::query::SubmitSubQueryReply resp;
     grpc::ClientContext ctx;
@@ -106,25 +107,31 @@ bool GrpcRemoteQueryClient::fetchSubChunk(const std::string& targetNodeId,
 
     for (const auto& row : resp.rows()) {
         TaxiTrip trip{};
-        trip.rowId = row.row_id();
-        trip.vendorId = row.vendor_id();
-        trip.pickupDatetime = row.pickup_datetime();
-        trip.dropoffDatetime = row.dropoff_datetime();
-        trip.passengerCount = row.passenger_count();
+
+        trip.vendorId = static_cast<uint8_t>(row.vendor_id());
+        trip.pickupEpochMs = row.pickup_datetime();
+        trip.dropoffEpochMs = row.dropoff_datetime();
+        trip.passengerCount = static_cast<uint8_t>(row.passenger_count());
         trip.tripDistance = row.trip_distance();
-        trip.rateCodeId = row.rate_code_id();
-        trip.storeAndFwdFlag = row.store_and_fwd_flag().empty() ? '\0' : row.store_and_fwd_flag()[0];
-        trip.puLocationId = row.pu_location_id();
-        trip.doLocationId = row.do_location_id();
-        trip.paymentType = row.payment_type();
-        trip.fareAmount = row.fare_amount();
-        trip.extra = row.extra();
-        trip.mtaTax = row.mta_tax();
-        trip.tipAmount = row.tip_amount();
-        trip.tollsAmount = row.tolls_amount();
-        trip.improvementSurcharge = row.improvement_surcharge();
-        trip.totalAmount = row.total_amount();
-        trip.congestionSurcharge = row.congestion_surcharge();
+        trip.rateCodeId = static_cast<uint8_t>(row.rate_code_id());
+
+        if (!row.store_and_fwd_flag().empty()) {
+            trip.storeAndFwd = static_cast<uint8_t>(row.store_and_fwd_flag()[0]);
+        }
+
+        trip.pickupLocationId = static_cast<uint16_t>(row.pu_location_id());
+        trip.dropLocationId = static_cast<uint16_t>(row.do_location_id());
+        trip.paymentType = static_cast<uint8_t>(row.payment_type());
+
+        trip.fareAmountCents = row.fare_amount();
+        trip.extraCents = row.extra();
+        trip.mtaTaxCents = row.mta_tax();
+        trip.tipAmountCents = row.tip_amount();
+        trip.tollsAmountCents = row.tolls_amount();
+        trip.improvementSurchargeCents = row.improvement_surcharge();
+        trip.totalAmountCents = row.total_amount();
+        trip.congestionSurchargeCents = row.congestion_surcharge();
+
         trips.push_back(trip);
     }
 

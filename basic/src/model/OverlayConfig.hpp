@@ -401,6 +401,16 @@ public:
         return true;
     }
 
+    std::string endpointFor(const std::string& nodeId) const {
+        auto it = nodes_.find(nodeId);
+        if (it == nodes_.end()) {
+            return "";
+        }
+
+        const NodeInfo& node = it->second;
+        return node.host + ":" + std::to_string(node.port);
+    }
+
 private:
     /*
      * Recursive helper to collect descendants.

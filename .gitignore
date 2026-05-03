@@ -12,3 +12,4 @@ test_omp.cpp
 
 basic/plot_bench.py
 basic/results/
+basic/legacy/2019_Yellow_Taxi_Trip_Data_20260215.csv
