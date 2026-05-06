@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <vector>
 
+#include "TaxiTrip.hpp"
+
 /*
  * LocalQueryResult
  * ----------------
@@ -23,6 +25,7 @@ struct LocalQueryResult
     std::uint64_t rowsMatched = 0;
 
     std::vector<std::size_t> matchedLocalRowIds;
+    std::vector<TaxiTrip> matchedTrips;
 
     // Old pagination fields
     std::uint64_t rowsSkipped = 0;
@@ -46,6 +49,10 @@ struct LocalQueryResult
         matchedLocalRowIds.insert(matchedLocalRowIds.end(),
                                   other.matchedLocalRowIds.begin(),
                                   other.matchedLocalRowIds.end());
+
+        matchedTrips.insert(matchedTrips.end(),
+                            other.matchedTrips.begin(),
+                            other.matchedTrips.end());
 
         // Recompute emitted count
         rowsEmitted = matchedLocalRowIds.size();

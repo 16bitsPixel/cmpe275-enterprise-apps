@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "RowRef.hpp"
+#include "TaxiTrip.hpp"
 
 /*
  * QueryResult
@@ -27,6 +28,7 @@ struct QueryResult
 
     // Distributed row references
     std::vector<RowRef> matchedRows;
+    std::vector<TaxiTrip> matchedTrips;
 
     uint64_t rowsSkipped = 0;
     uint64_t rowsEmitted = 0;
@@ -52,6 +54,10 @@ struct QueryResult
         matchedRows.insert(matchedRows.end(),
                            other.matchedRows.begin(),
                            other.matchedRows.end());
+
+        matchedTrips.insert(matchedTrips.end(),
+                            other.matchedTrips.begin(),
+                            other.matchedTrips.end());
     }
 
     void printQueryResult() const

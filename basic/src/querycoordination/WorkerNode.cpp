@@ -68,6 +68,7 @@ QueryResult WorkerNode::runExecute(const QueryRequest &request) const
     result.rowsEmitted = local.rowsEmitted;
     result.nextStartRow = local.nextStartRow; // Track next row index
     result.hasMore = local.hasMore;           // Track if more rows are available
+    result.matchedTrips = local.matchedTrips; // Include matched trips in the result
 
     for (std::size_t localRowId : local.matchedLocalRowIds)
     {

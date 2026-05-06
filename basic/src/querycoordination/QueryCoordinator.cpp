@@ -169,7 +169,7 @@ QueryCoordinator::RpcChunkResult QueryCoordinator::fetchChunkForRpc(const std::s
     }
 
     const std::size_t start = state->getNextUnreadIndex();
-    const std::size_t available = agg.matchedRows.size();
+    const std::size_t available = agg.matchedTrips.size();
 
     if (start >= available)
     {
@@ -183,7 +183,10 @@ QueryCoordinator::RpcChunkResult QueryCoordinator::fetchChunkForRpc(const std::s
         available - start
     );
 
-    out.trips = materializeTripsForChunk(agg, start, take);
+    // out.trips = materializeTripsForChunk(agg, start, take);
+    out.trips.insert(out.trips.end(),
+                 agg.matchedTrips.begin() + static_cast<std::ptrdiff_t>(start),
+                 agg.matchedTrips.begin() + static_cast<std::ptrdiff_t>(start + take));
 
     state->setNextUnreadIndex(start + take);
 

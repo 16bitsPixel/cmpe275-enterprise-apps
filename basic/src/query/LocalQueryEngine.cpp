@@ -194,6 +194,7 @@ LocalQueryResult LocalQueryEngine::execute(const PartitionStore &store,
 
             ++result.rowsMatched;
             result.matchedLocalRowIds.push_back(localRowId);
+            result.matchedTrips.push_back(toTaxiTrip(row));
             ++emitted;
             ++localRowId;
 
@@ -228,4 +229,18 @@ LocalQueryResult LocalQueryEngine::execute(const PartitionStore &store,
     std::cout << "Total EXECUTE query execution time: " << executeDuration << " ms" << std::endl;
 
     return result;
+}
+
+static TaxiTrip toTaxiTrip(const ParsedPartitionRow& row)
+{
+    TaxiTrip trip{};
+
+    trip.pickupEpochMs = row.pickupDatetime;
+    trip.dropoffEpochMs = row.dropoffDatetime;
+    trip.paymentType = static_cast<uint8_t>(row.paymentType);
+    trip.tripDistance = row.tripDistance;
+    trip.tipAmountCents = row.tipAmountCents;
+    trip.totalAmountCents = row.totalAmountCents;
+
+    return trip;
 }
