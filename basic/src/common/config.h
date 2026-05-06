@@ -20,6 +20,7 @@ struct NodeConfig {
     std::string listenHost;
     uint32_t listenPort = 0;
     std::vector<NeighborConfig> neighbors;
+    std::vector<std::string> assignedFiles;
 
     std::string listenTarget() const {
         return listenHost + ":" + std::to_string(listenPort);

@@ -65,6 +65,23 @@ int main(int argc, char** argv) {
         // Local worker owns its own PartitionStore
         // ------------------------------------------------
         WorkerNode localWorker(selfInfo);
+        if (!cfg.assignedFiles.empty()) {
+            PartitionLoader loader;
+
+            std::size_t fileIndex = 0;
+            for (const auto& file : cfg.assignedFiles) {
+                std::cout << "[shard] node=" << cfg.nodeId
+                          << " loading assigned file: " << file << "\n";
+
+                loader.loadFile(file, localWorker.getStore(), fileIndex++);
+            }
+
+            std::cout << "[shard] node=" << cfg.nodeId
+                      << " assigned_files=" << cfg.assignedFiles.size() << "\n";
+        } else {
+            std::cout << "[shard] node =" << cfg.nodeId
+                      << " has no assigned files; store remains empty\n";
+        }
 
         // Optional next step:
         // load assigned shard files into localWorker.getStore()

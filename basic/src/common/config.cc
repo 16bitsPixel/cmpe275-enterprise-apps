@@ -102,6 +102,18 @@ NodeConfig loadConfig(const std::string& path) {
                     }
                 }
             }
+        } else if (key == "assigned_files") {
+            cfg.assignedFiles.clear();
+
+            if (!value.empty()) {
+                auto items = split(value, ',');
+                for (const auto& item : items) {
+                    std::string path = trim(item);
+                    if (!path.empty()) {
+                        cfg.assignedFiles.push_back(path);
+                    }
+                }
+            }
         } else {
             throw std::runtime_error("Unknown config key: " + key);
         }

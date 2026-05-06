@@ -58,9 +58,3 @@ add_executable(query_client
 
 target_include_directories(query_client PRIVATE ${PROJECT_INCLUDE_DIRS})
 target_link_libraries(query_client PRIVATE mini2_core)
-
-if(APPLE)
-    target_link_libraries(node_server PRIVATE c++)
-    target_link_libraries(basecamp_client PRIVATE c++)
-    target_link_libraries(query_client PRIVATE c++)
-endif()
