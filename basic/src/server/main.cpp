@@ -73,7 +73,9 @@ int main(int argc, char** argv) {
                 std::cout << "[shard] node=" << cfg.nodeId
                           << " loading assigned file: " << file << "\n";
 
-                loader.loadFile(file, localWorker.getStore(), fileIndex++);
+                auto stats = loader.loadFile(file, localWorker.getStore(), fileIndex++);
+
+                std::cout << "[debug] after loadFile, localWorker store fileCount=" << localWorker.getStore().fileCount() << "\n";
             }
 
             std::cout << "[shard] node=" << cfg.nodeId

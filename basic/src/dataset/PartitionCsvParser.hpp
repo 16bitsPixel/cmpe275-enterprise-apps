@@ -9,6 +9,7 @@
 #include <limits>
 #include <string>
 #include <string_view>
+#include <iostream>
 
 /*
  * ParsedPartitionRow
@@ -135,11 +136,11 @@ public:
 
             if (idxCol == idx_.pickupDatetime)
             {
-                out.pickupDatetime = parseEpochMs_YYYYMMDD_HHMMSS_UTC(a, static_cast<std::size_t>(b - a));
+                out.pickupDatetime = parseEpochMs_YYYYMonDD_HHMMSS_AMPM_UTC(a, static_cast<std::size_t>(b - a));
             }
             else if (idxCol == idx_.dropoffDatetime)
             {
-                out.dropoffDatetime = parseEpochMs_YYYYMMDD_HHMMSS_UTC(a, static_cast<std::size_t>(b - a));
+                out.dropoffDatetime = parseEpochMs_YYYYMonDD_HHMMSS_AMPM_UTC(a, static_cast<std::size_t>(b - a));
             }
             else if (idxCol == idx_.tripDistance)
             {
@@ -218,80 +219,101 @@ private:
         }
     }
 
-    /*
-     * Parse timestamp "YYYY-MM-DD HH:MM:SS" into epoch milliseconds UTC.
-     * Returns 0 on failure.
-     */
-    static int64_t parseEpochMs_YYYYMMDD_HHMMSS_UTC(const char *s, std::size_t len)
+    static int64_t parseEpochMs_YYYYMonDD_HHMMSS_AMPM_UTC(const char *s, std::size_t len)
     {
-        if (!s || len < 19)
-        {
+        if (!s || len < 23) return 0;
+
+        auto is_digit = [](char c) { return c >= '0' && c <= '9'; };
+
+        // ---- Year ----
+        int year = 0;
+        for (int i = 0; i < 4; ++i) {
+            if (!is_digit(s[i])) return 0;
+            year = year * 10 + (s[i] - '0');
+        }
+
+        if (s[4] != ' ') return 0;
+
+        // ---- Month (3-letter) ----
+        int mon = -1;
+        const char *months[] = {
+            "Jan","Feb","Mar","Apr","May","Jun",
+            "Jul","Aug","Sep","Oct","Nov","Dec"
+        };
+
+        for (int i = 0; i < 12; ++i) {
+            if (s[5]==months[i][0] &&
+                s[6]==months[i][1] &&
+                s[7]==months[i][2]) {
+                mon = i + 1;
+                break;
+            }
+        }
+        if (mon == -1) return 0;
+
+        if (s[8] != ' ') return 0;
+
+        // ---- Day ----
+        if (!is_digit(s[9]) || !is_digit(s[10])) return 0;
+        int mday = (s[9]-'0')*10 + (s[10]-'0');
+
+        if (s[11] != ' ') return 0;
+
+        // ---- Time ----
+        auto to2 = [&](int i, int &out) -> bool {
+            if (!is_digit(s[i]) || !is_digit(s[i+1])) return false;
+            out = (s[i]-'0')*10 + (s[i+1]-'0');
+            return true;
+        };
+
+        int hour, min, sec;
+        if (!to2(12, hour) || s[14] != ':' ||
+            !to2(15, min) || s[17] != ':' ||
+            !to2(18, sec)) {
             return 0;
         }
 
-        if (s[4] != '-' || s[7] != '-' || s[10] != ' ' || s[13] != ':' || s[16] != ':')
-        {
-            return 0;
+        if (s[20] != ' ') return 0;
+
+        // ---- AM/PM ----
+        bool is_pm;
+        if (s[21]=='A' && s[22]=='M') is_pm = false;
+        else if (s[21]=='P' && s[22]=='M') is_pm = true;
+        else return 0;
+
+        // ---- Convert 12h → 24h ----
+        if (hour < 1 || hour > 12) return 0;
+
+        if (hour == 12) {
+            hour = is_pm ? 12 : 0;   // 12 AM = 00, 12 PM = 12
+        } else if (is_pm) {
+            hour += 12;
         }
 
-        auto to2 = [&](int i) -> int
-        {
-            if (i + 1 >= static_cast<int>(len))
-            {
-                return 0;
-            }
-
-            const char a = s[i];
-            const char b = s[i + 1];
-
-            if (a < '0' || a > '9' || b < '0' || b > '9')
-            {
-                return 0;
-            }
-
-            return (a - '0') * 10 + (b - '0');
-        };
-
-        auto to4 = [&](int i) -> int
-        {
-            if (i + 3 >= static_cast<int>(len))
-            {
-                return 0;
-            }
-
-            int v = 0;
-            for (int k = 0; k < 4; ++k)
-            {
-                const char c = s[i + k];
-                if (c < '0' || c > '9')
-                {
-                    return 0;
-                }
-                v = v * 10 + (c - '0');
-            }
-            return v;
-        };
+        // ---- Range checks ----
+        if (mday < 1 || mday > 31 ||
+            min < 0 || min > 59 ||
+            sec < 0 || sec > 60) {
+            return 0;
+        }
 
         std::tm tm{};
-        tm.tm_year = to4(0) - 1900;
-        tm.tm_mon = to2(5) - 1;
-        tm.tm_mday = to2(8);
-        tm.tm_hour = to2(11);
-        tm.tm_min = to2(14);
-        tm.tm_sec = to2(17);
+        tm.tm_year = year - 1900;
+        tm.tm_mon  = mon - 1;
+        tm.tm_mday = mday;
+        tm.tm_hour = hour;
+        tm.tm_min  = min;
+        tm.tm_sec  = sec;
 
 #ifdef _WIN32
-        std::time_t t = _mkgmtime(&tm);
+    std::time_t t = _mkgmtime(&tm);
 #else
-        std::time_t t = timegm(&tm);
+    std::time_t t = timegm(&tm);
 #endif
 
-        if (t == static_cast<std::time_t>(-1))
-        {
-            return 0;
-        }
+        if (t == (std::time_t)-1) return 0;
 
-        return static_cast<int64_t>(t) * 1000LL;
+        return (int64_t)t * 1000LL;
     }
 
     /*

@@ -57,6 +57,8 @@ QueryResult WorkerNode::runExecute(const QueryRequest &request) const
 {
     std::cout << "Running EXECUTE query on Node: " << getNodeId() << std::endl;
 
+    std::cout << "Worker " << getNodeId() << " has " << store_.fileCount() << " assigned files\n";
+
     auto start = std::chrono::high_resolution_clock::now(); // Start time
 
     LocalQueryResult local = engine_.execute(store_, request);
