@@ -32,6 +32,10 @@ bool GrpcRemoteQueryClient::submitSubQuery(const std::string& targetNodeId,
             : mini2::query::QUERY_EXECUTE
     );
 
+    for (const auto& id : request.visitedNodes) {
+        req.add_visited_node_ids(id);
+    }
+
     // If you later want a full toProtoSubmitSubQueryRequest helper, add it.
     QueryRequest local = request;
     if (local.pickupRange) {
@@ -62,7 +66,7 @@ bool GrpcRemoteQueryClient::submitSubQuery(const std::string& targetNodeId,
 
     mini2::query::SubmitSubQueryReply resp;
     grpc::ClientContext ctx;
-    ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(120));
+    ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(600));
 
     grpc::Status status = stub->SubmitSubQuery(&ctx, req, &resp);
     if (!status.ok()) {
@@ -103,7 +107,7 @@ bool GrpcRemoteQueryClient::fetchSubChunk(const std::string& targetNodeId,
 
     mini2::query::FetchSubChunkReply resp;
     grpc::ClientContext ctx;
-    ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(120));
+    ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(600));
 
     grpc::Status status = stub->FetchSubChunk(&ctx, req, &resp);
     if (!status.ok()) {
@@ -174,7 +178,7 @@ bool GrpcRemoteQueryClient::cancelSubQuery(const std::string& targetNodeId,
 
     mini2::query::CancelSubQueryReply resp;
     grpc::ClientContext ctx;
-    ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(120));
+    ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(600));
 
     grpc::Status status = stub->CancelSubQuery(&ctx, req, &resp);
     if (!status.ok()) {

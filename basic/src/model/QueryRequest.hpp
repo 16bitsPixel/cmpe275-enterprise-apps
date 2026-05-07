@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <unordered_set>
 
 /*
  * Range
@@ -70,6 +71,7 @@ public:
     std::string entryNodeId;
     std::optional<std::string> targetNodeId;
     bool distributedAllowed = true;
+    std::unordered_set<std::string> visitedNodes;
 
     /*
      * ==== Filter conditions ====
@@ -95,6 +97,14 @@ public:
 
     std::size_t startRow = 0;
     std::size_t chunkSize = 0;
+
+    bool hasVisited(const std::string& nodeId) const {
+        return visitedNodes.find(nodeId) != visitedNodes.end();
+    }
+
+    void markVisited(const std::string& nodeId) {
+        visitedNodes.insert(nodeId);
+    }
 
 private:
     std::string queryId;

@@ -400,12 +400,23 @@ QueryResult QueryCoordinator::processDistributedCount(
         return aggregateCountResults(partialResults);
     }
 
+    // mark self
+    QueryRequest currentReq = request;
+    currentReq.markVisited(selfNodeId_);
+
     for (const std::string &neighborId : overlay_->getChildren(selfNodeId_))
     {
         std::cout << "[distributed count] sending subquery to "
                   << neighborId << "\n";
 
-        QueryRequest remoteReq = request;
+        if (currentReq.hasVisited(neighborId)) {
+            std::cout << "[distributed] node =" << selfNodeId_
+                      << " skipping already visited child=" << neighborId << "\n";
+            continue;
+        }
+
+        QueryRequest remoteReq = currentReq;
+        remoteReq.markVisited(neighborId);
         remoteReq.setQueryType(QueryType::Count);
         remoteReq.distributedAllowed = true;
 
@@ -489,13 +500,24 @@ QueryResult QueryCoordinator::processDistributedExecute(
         return aggregateExecuteResults(partialResults, request);
     }
 
+    // mark self
+    QueryRequest currentReq = request;
+    currentReq.markVisited(selfNodeId_);
+
     // 2. Remote execution
     for (const std::string& neighborId : overlay_->getChildren(selfNodeId_))
     {
+        if (currentReq.hasVisited(neighborId)) {
+            std::cout << "[distributed] node =" << selfNodeId_
+                      << " skipping already visied child=" << neighborId << "\n";
+            continue;
+        }
+
         std::string remoteRequestId;
         std::string message;
 
-        QueryRequest childReq = request;
+        QueryRequest childReq = currentReq;
+        childReq.markVisited(neighborId);
         childReq.distributedAllowed = true;
 
         bool ok = remoteClient_->submitSubQuery(

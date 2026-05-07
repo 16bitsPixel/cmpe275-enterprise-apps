@@ -175,7 +175,7 @@ int main(int argc, char** argv) {
 
             mini2::query::SubmitQueryReply resp;
             grpc::ClientContext ctx;
-            ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(120));
+            ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(600));
 
             grpc::Status status = stub->SubmitQuery(&ctx, req, &resp);
             if (!status.ok()) {
@@ -203,7 +203,7 @@ int main(int argc, char** argv) {
 
             mini2::query::FetchChunkReply resp;
             grpc::ClientContext ctx;
-            ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(120));
+            ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(600));
 
             grpc::Status status = stub->FetchChunk(&ctx, req, &resp);
             if (!status.ok()) {
@@ -247,7 +247,7 @@ int main(int argc, char** argv) {
 
             mini2::query::CancelQueryReply resp;
             grpc::ClientContext ctx;
-            ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(120));
+            ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(600));
 
             grpc::Status status = stub->CancelQuery(&ctx, req, &resp);
             if (!status.ok()) {

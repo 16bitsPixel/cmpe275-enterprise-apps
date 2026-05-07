@@ -61,6 +61,9 @@ QueryRequest fromProtoSubmitQueryRequest(const mini2::query::SubmitQueryRequest&
             ? QueryType::Count
             : QueryType::Execute
     );
+    for (const auto& id : in.visited_node_ids()) {
+        out.visitedNodes.insert(id);
+    }
     return out;
 }
 
@@ -75,6 +78,9 @@ QueryRequest fromProtoSubmitSubQueryRequest(const mini2::query::SubmitSubQueryRe
             ? QueryType::Count
             : QueryType::Execute
     );
+    for (const auto& id : in.visited_node_ids()) {
+        out.visitedNodes.insert(id);
+    }
     return out;
 }
 

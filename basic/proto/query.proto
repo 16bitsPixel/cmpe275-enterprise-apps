@@ -46,6 +46,7 @@ message SubmitQueryRequest {
   uint32 preferred_chunk_size = 2;
   string client_tag = 3;
   QueryType query_type = 4;
+  repeated string visited_node_ids = 5;
 }
 
 message SubmitQueryReply {
@@ -113,6 +114,7 @@ message SubmitSubQueryRequest {
   QueryFilter filter = 3;
   uint32 preferred_chunk_size = 4;
   QueryType query_type = 5;
+  repeated string visited_node_ids = 6;
 }
 
 message SubmitSubQueryReply {
