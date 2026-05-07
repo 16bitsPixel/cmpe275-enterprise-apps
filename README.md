@@ -2,19 +2,6 @@
 
 ## Overview
 
-This project builds and benchmarks a C++ query engine over the **NYC OpenData Yellow Taxi Trip Records** dataset. The dataset spans multiple years (2019–2022) and totals **~24.1GB on disk** with **100M+ rows**. The goal is to ingest and query large CSV datasets efficiently, then measure how different design choices affect performance.
-
-Two approaches are implemented **side-by-side** across three phases:
-
-1. **In-Memory Engine** – ingest all rows into memory, then run fast queries over the stored dataset  
-2. **Streaming Engine** – do not store the dataset; scan files and evaluate predicates row-by-row per query (bounded memory)
-
-The project is organized into **three phases** that progressively optimize performance:
-
-- **Phase 1 – Serial baseline**
-- **Phase 2 – OpenMP parallelization**
-- **Phase 3 – Data model redesign (Object-of-Arrays / SoA)**
-
 ---
 
 ## Dataset
@@ -51,13 +38,69 @@ Two query modes are supported:
 - **execute** – return the matching row set (references or row indices depending on phase)
 
 ### 3) Benchmarking
-Includes a benchmark system that runs ingestion and querying multiple times (10+ runs) and reports:
-- Ingestion time
-- Count query time
-- Execute query time
-- Rows read / scanned / matched
-- Parse failure rate
-- Selectivity
-- Row throughput (rows/sec)
-- Throughput (MiB/sec)
-- Estimated data scanned (AoS vs SoA)
+
+## Data Sharding
+NOTE: replace <CSV_FILE> with the correct path
+```sh
+mkdir -p data/shards/{A,B,C,D,E,F,G,H,I}
+
+for n in A B C D E F G H I; do
+  head -n 1 data/<CSV_FILE> > data/shards/$n/yellow_2020_$n.csv
+done
+
+tail -n +2 data/<CSV_FILE> | awk '
+{
+  shard = NR % 9
+  if (shard == 1) print >> "data/shards/A/yellow_2020_A.csv"
+  else if (shard == 2) print >> "data/shards/B/yellow_2020_B.csv"
+  else if (shard == 3) print >> "data/shards/C/yellow_2020_C.csv"
+  else if (shard == 4) print >> "data/shards/D/yellow_2020_D.csv"
+  else if (shard == 5) print >> "data/shards/E/yellow_2020_E.csv"
+  else if (shard == 6) print >> "data/shards/F/yellow_2020_F.csv"
+  else if (shard == 7) print >> "data/shards/G/yellow_2020_G.csv"
+  else if (shard == 8) print >> "data/shards/H/yellow_2020_H.csv"
+  else print >> "data/shards/I/yellow_2020_I.csv"
+}'
+```
+
+## Build
+```sh
+rm -rf build
+mkdir build
+cd build
+
+unset CPATH
+unset CPLUS_INCLUDE_PATH
+unset C_INCLUDE_PATH
+unset LIBRARY_PATH
+unset LD_LIBRARY_PATH
+unset DYLD_LIBRARY_PATH
+unset CMAKE_PREFIX_PATH
+unset CXXFLAGS
+unset LDFLAGS
+
+CC=/usr/bin/clang CXX=/usr/bin/clang++ cmake ../basic \
+  -DCMAKE_PREFIX_PATH="/opt/homebrew" \
+  -DProtobuf_DIR="/opt/homebrew/lib/cmake/protobuf" \
+  -DgRPC_DIR="/opt/homebrew/lib/cmake/grpc"
+
+make -j
+```
+
+## Run
+Start a server node (A-I). <br>
+NOTE: start nodes from I to A (leaf to root)
+```sh
+./src/node_server --config ../basic/config/<conf_file>
+```
+
+Query (all queries sent to root A)
+```sh
+./src/query_client --target 127.0.0.1:50051 --submit --max-rows 10
+```
+
+Fetch. <br>
+<request_id> is returned from the previous query call
+```sh
+./src/query_client --target 127.0.0.1:50051 --fetch --request-id <request_id> --max-rows 200
+```
