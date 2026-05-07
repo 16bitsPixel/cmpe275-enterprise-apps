@@ -411,6 +411,17 @@ public:
         return node.host + ":" + std::to_string(node.port);
     }
 
+    std::vector<std::string> neighborNodeIds(const std::string& nodeId) const {
+        std::vector<std::string> result;
+
+        auto it = children_.find(nodeId);
+        if (it == children_.end()) {
+            return result;
+        }
+
+        return it->second;
+    }
+
 private:
     /*
      * Recursive helper to collect descendants.

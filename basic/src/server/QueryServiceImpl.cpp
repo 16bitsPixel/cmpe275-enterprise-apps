@@ -44,8 +44,14 @@ grpc::Status QueryServiceImpl::FetchChunk(
     response->set_rows_returned(static_cast<uint32_t>(r.trips.size()));
     response->set_message(r.message);
 
+    /*
     for (const auto& trip : r.trips) {
         *response->add_rows() = QueryProtoConverters::toProtoTripRow(trip, selfNodeId_);
+    }
+    */
+    for (std::size_t i = 0; i < r.trips.size(); ++i) {
+        const std::string source = (i < r.sources.size()) ? r.sources[i] : selfNodeId_;
+        *response->add_rows() = QueryProtoConverters::toProtoTripRow(r.trips[i], source);
     }
 
     std::cout << "[rpc] FetchChunk node=" << selfNodeId_
@@ -113,8 +119,14 @@ grpc::Status QueryServiceImpl::FetchSubChunk(
     response->set_rows_returned(static_cast<uint32_t>(r.trips.size()));
     response->set_message(r.message);
 
+    /*
     for (const auto& trip : r.trips) {
         *response->add_rows() = QueryProtoConverters::toProtoTripRow(trip, selfNodeId_);
+    }
+        */
+    for (std::size_t i = 0; i < r.trips.size(); ++i) {
+        const std::string source = (i < r.sources.size()) ? r.sources[i] : selfNodeId_;
+        *response->add_rows() = QueryProtoConverters::toProtoTripRow(r.trips[i], source);
     }
 
     std::cout << "[rpc] FetchSubChunk node=" << selfNodeId_

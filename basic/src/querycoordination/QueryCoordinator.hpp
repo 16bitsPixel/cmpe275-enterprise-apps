@@ -7,6 +7,8 @@
 #include "../model/QueryRequest.hpp"
 #include "../model/QueryResult.hpp"
 #include "../model/TaxiTrip.hpp"
+#include "../transport/GrpcRemoteQueryClient.hpp"
+#include "../model/OverlayConfig.hpp"
 #include "RequestState.hpp"
 #include "WorkerNode.hpp"
 
@@ -38,10 +40,18 @@ public:
         std::string requestId;
         std::string message;
         std::vector<TaxiTrip> trips;
+        std::vector<std::string> sources;
     };
 
 public:
     QueryCoordinator();
+
+    QueryCoordinator(const std::string& selfNodeId,
+                     const OverlayConfig& overlay,
+                     std::shared_ptr<GrpcRemoteQueryClient> client)
+        : remoteClient_(std::move(client)),
+          overlay_(&overlay),
+          selfNodeId_(selfNodeId) {}
 
     /*
      * Register one worker with the coordinator.
@@ -192,4 +202,8 @@ private:
      * Local sequence used when RPC callers do not provide query IDs.
      */
     std::size_t nextQuerySeq_ = 1;
+
+    std::shared_ptr<GrpcRemoteQueryClient> remoteClient_;
+    const OverlayConfig* overlay_ = nullptr;
+    std::string selfNodeId_;
 };

@@ -23,17 +23,25 @@ static OverlayConfig buildOverlayFromNodeConfig(const NodeConfig& cfg) {
     self.nodeId = cfg.nodeId;
     self.host = "127.0.0.1";   // local-dev advertised host
     self.port = cfg.listenPort;
+    self.isEntryNode = (cfg.nodeId == "A");
+    self.ownedFiles = cfg.assignedFiles;
+
+    overlay.addNode(self);
+
+    std::vector<std::string> children;
 
     for (const auto& n : cfg.neighbors) {
         NodeInfo peer;
         peer.nodeId = n.nodeId;
         peer.host = n.host;
         peer.port = n.port;
+        peer.isEntryNode = false;
 
         overlay.addNode(peer);
+        children.push_back(n.nodeId);
     }
 
-    overlay.addNode(self);
+    overlay.setChildren(cfg.nodeId, children);
     overlay.setSelfNodeId(cfg.nodeId);
 
     return overlay;
@@ -95,7 +103,15 @@ int main(int argc, char** argv) {
         // ------------------------------------------------
         // Coordinator
         // ------------------------------------------------
+        /*
         QueryCoordinator coordinator;
+        coordinator.addWorker(localWorker);
+        */
+        auto remoteClient = std::make_shared<GrpcRemoteQueryClient>(cfg.nodeId, overlay);
+
+        QueryCoordinator coordinator(cfg.nodeId, overlay, remoteClient);
+
+        // local worker still needed for local execution
         coordinator.addWorker(localWorker);
 
         // ------------------------------------------------

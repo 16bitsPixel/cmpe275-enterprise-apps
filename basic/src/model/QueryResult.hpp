@@ -29,6 +29,7 @@ struct QueryResult
     // Distributed row references
     std::vector<RowRef> matchedRows;
     std::vector<TaxiTrip> matchedTrips;
+    std::vector<std::string> matchedTripSources;
 
     uint64_t rowsSkipped = 0;
     uint64_t rowsEmitted = 0;

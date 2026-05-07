@@ -72,6 +72,11 @@ QueryResult WorkerNode::runExecute(const QueryRequest &request) const
     result.hasMore = local.hasMore;           // Track if more rows are available
     result.matchedTrips = local.matchedTrips; // Include matched trips in the result
 
+    result.matchedTripSources.reserve(local.matchedTrips.size());
+    for (std::size_t i = 0; i < local.matchedTrips.size(); ++i) {
+        result.matchedTripSources.push_back(getNodeId());
+    }
+
     for (std::size_t localRowId : local.matchedLocalRowIds)
     {
         result.addMatchedRow(info_.nodeId, localRowId);
