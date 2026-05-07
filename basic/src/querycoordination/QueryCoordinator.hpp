@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <unordered_map>
 
 #include "../model/QueryRequest.hpp"
 #include "../model/QueryResult.hpp"
@@ -44,6 +45,11 @@ public:
         std::vector<std::string> sources;
         std::uint64_t rowsScanned = 0;
         std::uint64_t rowsMatched = 0;
+    };
+
+    struct RemoteChildRequest {
+        std::string childNodeId;
+        std::string remoteRequestId;
     };
 
 public:
@@ -209,4 +215,5 @@ private:
     std::shared_ptr<GrpcRemoteQueryClient> remoteClient_;
     const OverlayConfig* overlay_ = nullptr;
     std::string selfNodeId_;
+    std::unordered_map<std::string, std::vector<RemoteChildRequest>> childRequests_;
 };

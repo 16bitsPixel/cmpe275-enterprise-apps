@@ -229,7 +229,43 @@ bool QueryCoordinator::cancel(const std::string &queryId, std::string &message)
     }
 
     state->setState(QueryState::CANCELLED);
-    message = "cancelled";
+
+    std::size_t remoteCancelAttempts = 0;
+    std::size_t remoteCancelSuccess = 0;
+
+    auto it = childRequests_.find(queryId);
+    if (it != childRequests_.end() && remoteClient_)
+    {
+        for (const auto &child : it->second)
+        {
+            ++remoteCancelAttempts;
+
+            std::string childMessage;
+            bool ok = remoteClient_->cancelSubQuery(
+                child.childNodeId,
+                child.remoteRequestId,
+                childMessage
+            );
+
+            if (ok)
+            {
+                ++remoteCancelSuccess;
+            }
+
+            std::cout << "[cancel] node=" << selfNodeId_
+                      << " child=" << child.childNodeId
+                      << " remote_request_id=" << child.remoteRequestId
+                      << " ok=" << (ok ? "true" : "false")
+                      << " message=" << childMessage
+                      << "\n";
+        }
+    }
+
+    message = "cancelled local request; remote cancels "
+        + std::to_string(remoteCancelSuccess)
+        + "/"
+        + std::to_string(remoteCancelAttempts);
+
     return true;
 }
 
@@ -391,6 +427,10 @@ QueryResult QueryCoordinator::processDistributedCount(
             continue;
         }
 
+        childRequests_[request.getQueryId()].push_back(
+            RemoteChildRequest{neighborId, remoteRequestId}
+        );
+
         std::vector<TaxiTrip> trips;
         std::vector<std::string> sources;
         std::uint64_t rowsScanned = 0;
@@ -472,6 +512,10 @@ QueryResult QueryCoordinator::processDistributedExecute(
                       << neighborId << ": " << message << "\n";
             continue;
         }
+
+        childRequests_[request.getQueryId()].push_back(
+            RemoteChildRequest{neighborId, remoteRequestId}
+        );
 
         std::vector<TaxiTrip> allTrips;
         std::vector<std::string> allSources;
