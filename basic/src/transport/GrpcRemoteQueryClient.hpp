@@ -29,6 +29,8 @@ public:
                        std::size_t maxRows,
                        std::vector<TaxiTrip>& trips,
                        std::vector<std::string>& sources,
+                       std::uint64_t& rowsScanned,
+                       std::uint64_t& rowsMatched,
                        bool& done,
                        std::string& message);
 

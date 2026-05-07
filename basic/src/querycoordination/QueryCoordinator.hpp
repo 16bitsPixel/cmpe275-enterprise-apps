@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <string>
 #include <vector>
+#include <cstdint>
 
 #include "../model/QueryRequest.hpp"
 #include "../model/QueryResult.hpp"
@@ -41,6 +42,8 @@ public:
         std::string message;
         std::vector<TaxiTrip> trips;
         std::vector<std::string> sources;
+        std::uint64_t rowsScanned = 0;
+        std::uint64_t rowsMatched = 0;
     };
 
 public:

@@ -26,6 +26,12 @@ bool GrpcRemoteQueryClient::submitSubQuery(const std::string& targetNodeId,
     req.set_parent_request_id(parentRequestId);
     req.set_origin_node_id(selfNodeId_);
 
+    req.set_query_type(
+        request.getQueryType() == QueryType::Count
+            ? mini2::query::QUERY_COUNT
+            : mini2::query::QUERY_EXECUTE
+    );
+
     // If you later want a full toProtoSubmitSubQueryRequest helper, add it.
     QueryRequest local = request;
     if (local.pickupRange) {
@@ -75,10 +81,14 @@ bool GrpcRemoteQueryClient::fetchSubChunk(const std::string& targetNodeId,
                                           std::size_t maxRows,
                                           std::vector<TaxiTrip>& trips,
                                           std::vector<std::string>& sources,
+                                          std::uint64_t& rowsScanned,
+                                          std::uint64_t& rowsMatched,
                                           bool& done,
                                           std::string& message) {
     trips.clear();
     sources.clear();
+    rowsScanned = 0;
+    rowsMatched = 0;
     done = false;
 
     auto* stub = getOrCreateStub(targetNodeId);
@@ -143,6 +153,8 @@ bool GrpcRemoteQueryClient::fetchSubChunk(const std::string& targetNodeId,
         }
     }
 
+    rowsScanned = resp.rows_scanned();
+    rowsMatched = resp.rows_matched();
     done = resp.done();
     message = resp.message();
     return true;

@@ -13,7 +13,7 @@
 static void printUsage(const char* prog) {
     std::cerr
         << "Usage:\n"
-        << "  " << prog << " --target <host:port> --submit [filters]\n"
+        << "  " << prog << " --target <host:port> --submit [--count] [filters]\n"
         << "  " << prog << " --target <host:port> --fetch --request-id <id> --max-rows <n>\n"
         << "  " << prog << " --target <host:port> --cancel --request-id <id>\n"
         << "\n"
@@ -22,7 +22,8 @@ static void printUsage(const char* prog) {
         << "  --distance-lo <float> --distance-hi <float>\n"
         << "  --total-lo <int> --total-hi <int>\n"
         << "  --pickup-lo <int64> --pickup-hi <int64>\n"
-        << "  --chunk-size <n>\n";
+        << "  --chunk-size <n>\n"
+        << "  --count<n>\n";
 }
 
 static std::unique_ptr<mini2::query::QueryService::Stub> makeStub(const std::string& target) {
@@ -57,6 +58,8 @@ int main(int argc, char** argv) {
                 target = argv[++i];
             } else if (arg == "--submit") {
                 doSubmit = true;
+            } else if (arg == "--count") {
+                submitReq.setQueryType(QueryType::Count);
             } else if (arg == "--fetch") {
                 doFetch = true;
             } else if (arg == "--cancel") {
@@ -164,6 +167,12 @@ int main(int argc, char** argv) {
 
             req.set_preferred_chunk_size(static_cast<uint32_t>(submitReq.chunkSize));
 
+            req.set_query_type(
+                submitReq.getQueryType() == QueryType::Count
+                    ? mini2::query::QUERY_COUNT
+                    : mini2::query::QUERY_EXECUTE
+            );
+
             mini2::query::SubmitQueryReply resp;
             grpc::ClientContext ctx;
             ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(3000));
@@ -207,6 +216,8 @@ int main(int argc, char** argv) {
             std::cout << "request_id    : " << resp.request_id() << "\n";
             std::cout << "node_id       : " << resp.node_id() << "\n";
             std::cout << "rows_returned : " << resp.rows_returned() << "\n";
+            std::cout << "rows_scanned  : " << resp.rows_scanned() << "\n";
+            std::cout << "rows_matched  : " << resp.rows_matched() << "\n";
             std::cout << "done          : " << (resp.done() ? "true" : "false") << "\n";
             std::cout << "message       : " << resp.message() << "\n";
 

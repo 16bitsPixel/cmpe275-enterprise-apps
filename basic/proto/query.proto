@@ -12,6 +12,11 @@ service QueryService {
   rpc CancelSubQuery(CancelSubQueryRequest) returns (CancelSubQueryReply) {}
 }
 
+enum QueryType {
+  QUERY_EXECUTE = 0;
+  QUERY_COUNT = 1;
+}
+
 message Int64Range {
   int64 lo = 1;
   int64 hi = 2;
@@ -40,6 +45,7 @@ message SubmitQueryRequest {
   QueryFilter filter = 1;
   uint32 preferred_chunk_size = 2;
   string client_tag = 3;
+  QueryType query_type = 4;
 }
 
 message SubmitQueryReply {
@@ -86,6 +92,8 @@ message FetchChunkReply {
   bool done = 5;
   uint32 rows_returned = 6;
   string message = 7;
+  uint64 rows_scanned = 8;
+  uint64 rows_matched = 9;
 }
 
 message CancelQueryRequest {
@@ -104,6 +112,7 @@ message SubmitSubQueryRequest {
   string origin_node_id = 2;
   QueryFilter filter = 3;
   uint32 preferred_chunk_size = 4;
+  QueryType query_type = 5;
 }
 
 message SubmitSubQueryReply {
@@ -126,6 +135,8 @@ message FetchSubChunkReply {
   bool done = 5;
   uint32 rows_returned = 6;
   string message = 7;
+  uint64 rows_scanned = 8;
+  uint64 rows_matched = 9;
 }
 
 message CancelSubQueryRequest {

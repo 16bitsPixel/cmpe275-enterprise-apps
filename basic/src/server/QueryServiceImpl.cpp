@@ -42,6 +42,8 @@ grpc::Status QueryServiceImpl::FetchChunk(
     response->set_node_id(selfNodeId_);
     response->set_done(r.done);
     response->set_rows_returned(static_cast<uint32_t>(r.trips.size()));
+    response->set_rows_scanned(r.rowsScanned);
+    response->set_rows_matched(r.rowsMatched);
     response->set_message(r.message);
 
     /*
@@ -117,6 +119,8 @@ grpc::Status QueryServiceImpl::FetchSubChunk(
     response->set_node_id(selfNodeId_);
     response->set_done(r.done);
     response->set_rows_returned(static_cast<uint32_t>(r.trips.size()));
+    response->set_rows_scanned(r.rowsScanned);
+    response->set_rows_matched(r.rowsMatched);
     response->set_message(r.message);
 
     /*

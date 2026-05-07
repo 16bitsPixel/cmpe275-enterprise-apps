@@ -160,6 +160,9 @@ QueryCoordinator::RpcChunkResult QueryCoordinator::fetchChunkForRpc(const std::s
 
     const QueryResult &agg = state->getAggregatedResult();
 
+    out.rowsScanned = agg.rowsScanned;
+    out.rowsMatched = agg.rowsMatched;
+
     // COUNT queries return no trips, only completion info.
     if (state->getRequest().getQueryType() == QueryType::Count)
     {
@@ -350,7 +353,7 @@ QueryResult QueryCoordinator::processDistributedCount(
         if (worker.getNodeId() == selfNodeId_)
         {
             QueryResult local = worker.runCount(request);
-            partialResults.push_back(local);
+            partialResults.push_back(std::move(local));
             break;
         }
     }
@@ -368,7 +371,7 @@ QueryResult QueryCoordinator::processDistributedCount(
 
         QueryRequest remoteReq = request;
         remoteReq.setQueryType(QueryType::Count);
-        remoteReq.distributedAllowed = false;
+        remoteReq.distributedAllowed = true;
 
         std::string remoteRequestId;
         std::string message;
@@ -388,11 +391,10 @@ QueryResult QueryCoordinator::processDistributedCount(
             continue;
         }
 
-        // Current FetchSubChunk returns rows, not count metadata.
-        // So for Milestone 6, this only proves remote COUNT dispatch.
-        // Full count aggregation needs count fields in the proto reply.
         std::vector<TaxiTrip> trips;
         std::vector<std::string> sources;
+        std::uint64_t rowsScanned = 0;
+        std::uint64_t rowsMatched = 0;
         bool done = false;
 
         ok = remoteClient_->fetchSubChunk(
@@ -401,6 +403,8 @@ QueryResult QueryCoordinator::processDistributedCount(
             0,
             trips,
             sources,
+            rowsScanned,
+            rowsMatched,
             done,
             message
         );
@@ -413,10 +417,12 @@ QueryResult QueryCoordinator::processDistributedCount(
         }
 
         QueryResult remoteResult{};
-        remoteResult.rowsMatched = trips.size();
-        remoteResult.rowsScanned = trips.size();
+        remoteResult.rowsMatched = rowsMatched;
+        remoteResult.rowsScanned = rowsScanned;
+        remoteResult.rowsEmitted = 0;
+        remoteResult.hasMore = false;
 
-        partialResults.push_back(remoteResult);
+        partialResults.push_back(std::move(remoteResult));
     }
 
     return aggregateCountResults(partialResults);
@@ -476,6 +482,8 @@ QueryResult QueryCoordinator::processDistributedExecute(
         while (!done) {
             std::vector<TaxiTrip> trips;
             std::vector<std::string> sources;
+            std::uint64_t rowsScanned = 0;
+            std::uint64_t rowsMatched = 0;
 
             ok = remoteClient_->fetchSubChunk(
                 neighborId,
@@ -483,6 +491,8 @@ QueryResult QueryCoordinator::processDistributedExecute(
                 childFetchSize,
                 trips,
                 sources,
+                rowsScanned,
+                rowsMatched,
                 done,
                 message
             );

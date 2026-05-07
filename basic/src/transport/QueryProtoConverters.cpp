@@ -47,11 +47,20 @@ QueryRequest fromProtoFilter(const mini2::query::QueryFilter& in) {
 
 QueryRequest fromProtoSubmitQueryRequest(const mini2::query::SubmitQueryRequest& in) {
     QueryRequest out = fromProtoFilter(in.filter());
-    out.setQueryType(QueryType::Execute);
+    if (in.query_type() == mini2::query::QUERY_COUNT) {
+        out.setQueryType(QueryType::Count);
+    } else {
+        out.setQueryType(QueryType::Execute);
+    }
     out.chunkSize = in.preferred_chunk_size();
     out.entryNodeId = "";
     out.originNodeId = "";
     out.distributedAllowed = true;
+    out.setQueryType(
+        in.query_type() == mini2::query::QUERY_COUNT
+            ? QueryType::Count
+            : QueryType::Execute
+    );
     return out;
 }
 
@@ -61,6 +70,11 @@ QueryRequest fromProtoSubmitSubQueryRequest(const mini2::query::SubmitSubQueryRe
     out.chunkSize = in.preferred_chunk_size();
     out.originNodeId = in.origin_node_id();
     out.distributedAllowed = false;
+    out.setQueryType(
+        in.query_type() == mini2::query::QUERY_COUNT
+            ? QueryType::Count
+            : QueryType::Execute
+    );
     return out;
 }
 
