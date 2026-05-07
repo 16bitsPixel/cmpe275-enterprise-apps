@@ -28,6 +28,7 @@ public:
                        const std::string& remoteRequestId,
                        std::size_t maxRows,
                        std::vector<TaxiTrip>& trips,
+                       std::vector<std::string>& sources,
                        bool& done,
                        std::string& message);
 

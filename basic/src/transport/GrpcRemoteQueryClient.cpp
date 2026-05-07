@@ -74,9 +74,11 @@ bool GrpcRemoteQueryClient::fetchSubChunk(const std::string& targetNodeId,
                                           const std::string& remoteRequestId,
                                           std::size_t maxRows,
                                           std::vector<TaxiTrip>& trips,
+                                          std::vector<std::string>& sources,
                                           bool& done,
                                           std::string& message) {
     trips.clear();
+    sources.clear();
     done = false;
 
     auto* stub = getOrCreateStub(targetNodeId);
@@ -133,6 +135,12 @@ bool GrpcRemoteQueryClient::fetchSubChunk(const std::string& targetNodeId,
         trip.congestionSurchargeCents = row.congestion_surcharge();
 
         trips.push_back(trip);
+
+        if (!row.source_node_id().empty()) {
+            sources.push_back(row.source_node_id());
+        } else {
+            sources.push_back(targetNodeId);
+        }
     }
 
     done = resp.done();

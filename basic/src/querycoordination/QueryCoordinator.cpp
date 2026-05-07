@@ -63,11 +63,6 @@ QueryResult QueryCoordinator::runExecute(QueryRequest &request)
 
     QueryResult result{};
 
-    std::cout << "[coordinator] node=" << selfNodeId_
-              << " distributedAllowed=" << request.distributedAllowed
-              << " neighbors=" << (overlay_ ? overlay_->getChildren(selfNodeId_).size() : 0)
-              << "\n";
-
     if (canProcessLocally(request))
     {
         result = processLocalExecute(request);
@@ -118,7 +113,7 @@ std::string QueryCoordinator::submitSubQuery(QueryRequest request, const std::st
     // Current QueryRequest does not store parentRequestId.
     (void)parentRequestId;
 
-    request.distributedAllowed = false;
+    request.distributedAllowed = true;
 
     if (request.getQueryType() == QueryType::Count)
     {
@@ -397,6 +392,7 @@ QueryResult QueryCoordinator::processDistributedCount(
         // So for Milestone 6, this only proves remote COUNT dispatch.
         // Full count aggregation needs count fields in the proto reply.
         std::vector<TaxiTrip> trips;
+        std::vector<std::string> sources;
         bool done = false;
 
         ok = remoteClient_->fetchSubChunk(
@@ -404,6 +400,7 @@ QueryResult QueryCoordinator::processDistributedCount(
             remoteRequestId,
             0,
             trips,
+            sources,
             done,
             message
         );
@@ -441,15 +438,23 @@ QueryResult QueryCoordinator::processDistributedExecute(
         }
     }
 
+    // recursive child forwarding
+    if (overlay_ == nullptr || !remoteClient_) {
+        return aggregateExecuteResults(partialResults, request);
+    }
+
     // 2. Remote execution
     for (const std::string& neighborId : overlay_->getChildren(selfNodeId_))
     {
         std::string remoteRequestId;
         std::string message;
 
+        QueryRequest childReq = request;
+        childReq.distributedAllowed = true;
+
         bool ok = remoteClient_->submitSubQuery(
             neighborId,
-            request,
+            childReq,
             request.getQueryId(),
             remoteRequestId,
             message
@@ -462,38 +467,76 @@ QueryResult QueryCoordinator::processDistributedExecute(
             continue;
         }
 
-        std::vector<TaxiTrip> trips;
+        std::vector<TaxiTrip> allTrips;
+        std::vector<std::string> allSources;
         bool done = false;
 
-        ok = remoteClient_->fetchSubChunk(
-            neighborId,
-            remoteRequestId,
-            request.chunkSize,
-            trips,
-            done,
-            message
-        );
+        const std::size_t childFetchSize = request.chunkSize == 0 ? std::size_t(64) : request.chunkSize;
 
-        if (!ok)
-        {
-            std::cout << "[distributed] fetchSubChunk failed for "
-                      << neighborId << ": " << message << "\n";
-            continue;
+        while (!done) {
+            std::vector<TaxiTrip> trips;
+            std::vector<std::string> sources;
+
+            ok = remoteClient_->fetchSubChunk(
+                neighborId,
+                remoteRequestId,
+                childFetchSize,
+                trips,
+                sources,
+                done,
+                message
+            );
+
+            if (!ok)
+            {
+                std::cout << "[distributed] fetchSubChunk failed for "
+                        << neighborId << ": " << message << "\n";
+                break;
+            }
+
+            std::cout << "[distributed] node=" << selfNodeId_
+              << " child=" << neighborId
+              << " fetched trips=" << trips.size()
+              << " sources=" << sources.size()
+              << " done=" << (done ? "true" : "false")
+              << "\n";
+
+            allTrips.insert(
+                allTrips.end(),
+                trips.begin(),
+                trips.end()
+            );
+
+            if (sources.size() == trips.size()) {
+                allSources.insert(
+                    allSources.end(),
+                    sources.begin(),
+                    sources.end()
+                );
+            } else {
+                allSources.insert(
+                    allSources.end(),
+                    trips.size(),
+                    neighborId
+                );
+            }
+
+            if (trips.empty() && !done) {
+                std::cout << "[distributed] child=" << neighborId
+                          << " returned empty chunk but not done; stopping to avoid loop\n";
+                break;
+            }
         }
 
         QueryResult remoteResult{};
-        remoteResult.matchedTrips = std::move(trips);
-        remoteResult.rowsScanned = trips.size();
-        remoteResult.rowsMatched = trips.size();
-        remoteResult.rowsEmitted = trips.size();
-        remoteResult.hasMore = !done;
-        remoteResult.matchedTripSources.reserve(remoteResult.matchedTrips.size());
+        remoteResult.rowsScanned = allTrips.size();
+        remoteResult.rowsMatched = allTrips.size();
+        remoteResult.rowsEmitted = allTrips.size();
+        remoteResult.matchedTrips = std::move(allTrips);
+        remoteResult.matchedTripSources = std::move(allSources);
+        remoteResult.hasMore = false;
 
-        for (std::size_t i = 0; i < remoteResult.matchedTrips.size(); ++i) {
-            remoteResult.matchedTripSources.push_back(neighborId);
-        }
-
-        partialResults.push_back(remoteResult);
+        partialResults.push_back(std::move(remoteResult));
     }
 
     return aggregateExecuteResults(partialResults, request);
@@ -550,6 +593,21 @@ QueryResult QueryCoordinator::aggregateExecuteResults(
     }
 
     aggregated.rowsEmitted = aggregated.matchedTrips.size();
+
+    /* DEBUG
+    std::cout << "[aggregate debug] node=" << selfNodeId_
+              << " results_in=" << results.size()
+              << " totalTrips=" << aggregated.matchedTrips.size()
+              << " totalSources=" << aggregated.matchedTripSources.size()
+              << "\n";
+
+    for (std::size_t i = 60; i < aggregated.matchedTripSources.size() && i < 75; ++i)
+    {
+        std::cout << "[aggregate debug] i=" << i
+                  << " source=" << aggregated.matchedTripSources[i]
+                  << "\n";
+    }
+    */
 
     (void)request;
     return aggregated;
