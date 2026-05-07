@@ -62,7 +62,7 @@ bool GrpcRemoteQueryClient::submitSubQuery(const std::string& targetNodeId,
 
     mini2::query::SubmitSubQueryReply resp;
     grpc::ClientContext ctx;
-    ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(2000));
+    ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(120));
 
     grpc::Status status = stub->SubmitSubQuery(&ctx, req, &resp);
     if (!status.ok()) {
@@ -103,7 +103,7 @@ bool GrpcRemoteQueryClient::fetchSubChunk(const std::string& targetNodeId,
 
     mini2::query::FetchSubChunkReply resp;
     grpc::ClientContext ctx;
-    ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(2500));
+    ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(120));
 
     grpc::Status status = stub->FetchSubChunk(&ctx, req, &resp);
     if (!status.ok()) {
@@ -174,7 +174,7 @@ bool GrpcRemoteQueryClient::cancelSubQuery(const std::string& targetNodeId,
 
     mini2::query::CancelSubQueryReply resp;
     grpc::ClientContext ctx;
-    ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(1500));
+    ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(120));
 
     grpc::Status status = stub->CancelSubQuery(&ctx, req, &resp);
     if (!status.ok()) {
