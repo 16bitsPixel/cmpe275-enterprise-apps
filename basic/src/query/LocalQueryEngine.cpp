@@ -212,7 +212,7 @@ LocalQueryResult LocalQueryEngine::execute(const PartitionStore &store,
             continue;
         }
 
-        std::cout << "[execute] header: " << headerLine << "\n";
+        // std::cout << "[execute] header: " << headerLine << "\n";
 
         PartitionCsvParser parser;
 
@@ -249,6 +249,7 @@ LocalQueryResult LocalQueryEngine::execute(const PartitionStore &store,
 
             ++parsedRows;
 
+            /* DEBUGGING
             if (parsedRows <= 5) {
                 std::cout << "[execute parsed row] localRowId=" << localRowId
                           << " payment=" << static_cast<int>(row.paymentType)
@@ -257,12 +258,14 @@ LocalQueryResult LocalQueryEngine::execute(const PartitionStore &store,
                           << " totalCents=" << row.totalAmountCents
                           << " pickup=" << row.pickupDatetime << "\n";
             }
+            */
 
             if (!matchesRow(row, request))
             {
                 ++localRowId;
                 ++rejectedRows;
 
+                /* DEBUGGING
                 if (rejectedRows <= 5) {
                     std::cout << "[execute rejected row] localRowId=" << localRowId
                           << " payment=" << static_cast<int>(row.paymentType)
@@ -270,6 +273,8 @@ LocalQueryResult LocalQueryEngine::execute(const PartitionStore &store,
                           << " tipCents=" << row.tipAmountCents
                           << " totalCents=" << row.totalAmountCents << "\n";
                 }
+                */
+                
                 continue;
             }
 
