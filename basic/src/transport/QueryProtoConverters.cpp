@@ -69,10 +69,10 @@ QueryRequest fromProtoSubmitQueryRequest(const mini2::query::SubmitQueryRequest&
 
 QueryRequest fromProtoSubmitSubQueryRequest(const mini2::query::SubmitSubQueryRequest& in) {
     QueryRequest out = fromProtoFilter(in.filter());
-    out.setQueryType(QueryType::Execute);
+    out.setQueryId(in.parent_request_id());
     out.chunkSize = in.preferred_chunk_size();
     out.originNodeId = in.origin_node_id();
-    out.distributedAllowed = false;
+    out.distributedAllowed = true;
     out.setQueryType(
         in.query_type() == mini2::query::QUERY_COUNT
             ? QueryType::Count

@@ -177,7 +177,14 @@ int main(int argc, char** argv) {
             grpc::ClientContext ctx;
             ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(600));
 
+            // timer
+            auto start = std::chrono::high_resolution_clock::now();
+
             grpc::Status status = stub->SubmitQuery(&ctx, req, &resp);
+
+            auto end = std::chrono::high_resolution_clock::now();
+            std::chrono::duration<double, std::milli> ms = end - start;
+
             if (!status.ok()) {
                 std::cerr << "SubmitQuery failed: " << status.error_message() << "\n";
                 return 4;
@@ -188,6 +195,7 @@ int main(int argc, char** argv) {
             std::cout << "request_id : " << resp.request_id() << "\n";
             std::cout << "node_id    : " << resp.node_id() << "\n";
             std::cout << "message    : " << resp.message() << "\n";
+            std::cout << "submit_ms  : " << ms.count() << "\n";
             return 0;
         }
 
@@ -205,21 +213,17 @@ int main(int argc, char** argv) {
             grpc::ClientContext ctx;
             ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(600));
 
+            auto start = std::chrono::high_resolution_clock::now();
+
             grpc::Status status = stub->FetchChunk(&ctx, req, &resp);
+
+            auto end = std::chrono::high_resolution_clock::now();
+            std::chrono::duration<double, std::milli> ms = end - start;
+
             if (!status.ok()) {
                 std::cerr << "FetchChunk failed: " << status.error_message() << "\n";
                 return 6;
             }
-
-            std::cout << "FetchChunk ok\n";
-            std::cout << "found         : " << (resp.found() ? "true" : "false") << "\n";
-            std::cout << "request_id    : " << resp.request_id() << "\n";
-            std::cout << "node_id       : " << resp.node_id() << "\n";
-            std::cout << "rows_returned : " << resp.rows_returned() << "\n";
-            std::cout << "rows_scanned  : " << resp.rows_scanned() << "\n";
-            std::cout << "rows_matched  : " << resp.rows_matched() << "\n";
-            std::cout << "done          : " << (resp.done() ? "true" : "false") << "\n";
-            std::cout << "message       : " << resp.message() << "\n";
 
             for (int i = 0; i < resp.rows_size(); ++i) {
                 const auto& row = resp.rows(i);
@@ -232,6 +236,17 @@ int main(int argc, char** argv) {
                     << " total=" << row.total_amount()
                     << "\n";
             }
+
+            std::cout << "FetchChunk ok\n";
+            std::cout << "found         : " << (resp.found() ? "true" : "false") << "\n";
+            std::cout << "request_id    : " << resp.request_id() << "\n";
+            std::cout << "node_id       : " << resp.node_id() << "\n";
+            std::cout << "rows_returned : " << resp.rows_returned() << "\n";
+            std::cout << "rows_scanned  : " << resp.rows_scanned() << "\n";
+            std::cout << "rows_matched  : " << resp.rows_matched() << "\n";
+            std::cout << "done          : " << (resp.done() ? "true" : "false") << "\n";
+            std::cout << "message       : " << resp.message() << "\n";
+            std::cout << "submit_ms  : " << ms.count() << "\n";
 
             return 0;
         }

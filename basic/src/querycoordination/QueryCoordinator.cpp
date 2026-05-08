@@ -46,8 +46,13 @@ QueryResult QueryCoordinator::runCount(QueryRequest &request)
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> duration = end - start;
 
-    std::cout << "COUNT query completed: " << request.getQueryId() << std::endl;
-    std::cout << "Execution time (ms): " << duration.count() * 1000 << "ms" << std::endl;
+    std::cout << "[benchmark] query_id=" << request.getQueryId()
+          << " type=COUNT"
+          << " node=" << selfNodeId_
+          << " total_ms=" << duration.count() * 1000
+          << " rows_scanned=" << result.rowsScanned
+          << " rows_matched=" << result.rowsMatched
+          << "\n";
 
     return result;
 }
@@ -84,8 +89,14 @@ QueryResult QueryCoordinator::runExecute(QueryRequest &request)
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> duration = end - start;
 
-    std::cout << "EXECUTE query completed: " << request.getQueryId() << std::endl;
-    std::cout << "Execution time (ms): " << duration.count() * 1000 << "ms" << std::endl;
+    std::cout << "[benchmark] query_id=" << request.getQueryId()
+          << " type=EXECUTE"
+          << " node=" << selfNodeId_
+          << " total_ms=" << duration.count() * 1000
+          << " rows_scanned=" << result.rowsScanned
+          << " rows_matched=" << result.rowsMatched
+          << " rows_emitted=" << result.rowsEmitted
+          << "\n";
 
     return result;
 }
@@ -108,10 +119,11 @@ std::string QueryCoordinator::submitClientQuery(QueryRequest request)
 
 std::string QueryCoordinator::submitSubQuery(QueryRequest request, const std::string &parentRequestId)
 {
-    const std::string queryId = ensureQueryId(request);
+    if (request.getQueryId().empty()) {
+        request.setQueryId(parentRequestId);
+    }
 
-    // Current QueryRequest does not store parentRequestId.
-    (void)parentRequestId;
+    const std::string queryId = request.getQueryId();
 
     request.distributedAllowed = true;
 
