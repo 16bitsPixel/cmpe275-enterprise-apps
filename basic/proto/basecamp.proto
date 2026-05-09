@@ -1,0 +1,39 @@
+syntax = "proto3";
+package basecamp;
+
+import "google/protobuf/empty.proto";
+
+service NodeService {
+   rpc Ping(google.protobuf.Empty) returns (PingReply) {}
+   rpc ForwardProbe(ProbeRequest) returns (ProbeReply) {}
+   rpc GatherNeighbors(google.protobuf.Empty) returns (NeighborReply) {}
+}
+
+message PingReply {
+    string node_id = 1;
+    string host = 2;
+    uint32 port = 3;
+    string language = 4; // "cpp" or "python"
+}
+
+message ProbeRequest {
+    string origin_id = 1;
+    uint32 ttl = 2;
+    string payload = 3;
+}
+
+message ProbeReply {
+    string responder_id = 1;
+    bool accepted = 2;
+    string message = 3;
+}
+
+message NeighborInfo {
+    string node_id = 1;
+    string target = 2; // host:port
+}
+
+message NeighborReply {
+    string node_id = 1;
+    repeated NeighborInfo neighbors = 2;
+}

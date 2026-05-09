@@ -1,0 +1,154 @@
+syntax = "proto3";
+
+package mini2.query;
+
+service QueryService {
+  rpc SubmitQuery(SubmitQueryRequest) returns (SubmitQueryReply) {}
+  rpc FetchChunk(FetchChunkRequest) returns (FetchChunkReply) {}
+  rpc CancelQuery(CancelQueryRequest) returns (CancelQueryReply) {}
+
+  rpc SubmitSubQuery(SubmitSubQueryRequest) returns (SubmitSubQueryReply) {}
+  rpc FetchSubChunk(FetchSubChunkRequest) returns (FetchSubChunkReply) {}
+  rpc CancelSubQuery(CancelSubQueryRequest) returns (CancelSubQueryReply) {}
+}
+
+message Int64Range {
+  int64 lo = 1;
+  int64 hi = 2;
+}
+
+message Int32Range {
+  int32 lo = 1;
+  int32 hi = 2;
+}
+
+message FloatRange {
+  float lo = 1;
+  float hi = 2;
+}
+
+message QueryFilter {
+  Int64Range pickup_range = 1;
+  Int64Range dropoff_range = 2;
+  FloatRange distance_range = 3;
+  Int32Range total_cents_range = 4;
+  Int32Range tip_cents_range = 5;
+  optional int32 payment_type = 6;
+}
+
+message SubmitQueryRequest {
+  QueryFilter filter = 1;
+  uint32 preferred_chunk_size = 2;
+  string client_tag = 3;
+
+  // Tracks nodes already visited by this request to avoid duplicate overlay traversal.
+  repeated string visited_node_ids = 4;
+
+  // Maximum number of physical rows a worker should scan per chunk.
+  // 0 means the server uses its default scan budget.
+  uint32 scan_row_budget = 5;
+}
+
+message SubmitQueryReply {
+  bool accepted = 1;
+  string request_id = 2;
+  string node_id = 3;
+  string message = 4;
+}
+
+message FetchChunkRequest {
+  string request_id = 1;
+  uint32 max_rows = 2;
+}
+
+message TripRow {
+  uint32 row_id = 1;
+  string source_node_id = 2;
+
+  int32 vendor_id = 3;
+  int64 pickup_datetime = 4;
+  int64 dropoff_datetime = 5;
+  int32 passenger_count = 6;
+  float trip_distance = 7;
+  int32 rate_code_id = 8;
+  string store_and_fwd_flag = 9;
+  int32 pu_location_id = 10;
+  int32 do_location_id = 11;
+  int32 payment_type = 12;
+  int32 fare_amount = 13;
+  int32 extra = 14;
+  int32 mta_tax = 15;
+  int32 tip_amount = 16;
+  int32 tolls_amount = 17;
+  int32 improvement_surcharge = 18;
+  int32 total_amount = 19;
+  int32 congestion_surcharge = 20;
+}
+
+message FetchChunkReply {
+  bool found = 1;
+  string request_id = 2;
+  string node_id = 3;
+  repeated TripRow rows = 4;
+  bool done = 5;
+  uint32 rows_returned = 6;
+  string message = 7;
+}
+
+message CancelQueryRequest {
+  string request_id = 1;
+}
+
+message CancelQueryReply {
+  bool success = 1;
+  string request_id = 2;
+  string node_id = 3;
+  string message = 4;
+}
+
+message SubmitSubQueryRequest {
+  string parent_request_id = 1;
+  string origin_node_id = 2;
+  QueryFilter filter = 3;
+  uint32 preferred_chunk_size = 4;
+
+  // Carries visited-node state across subqueries in the directed overlay.
+  repeated string visited_node_ids = 5;
+
+  // Maximum number of physical rows a worker should scan per chunk.
+  // 0 means the server uses its default scan budget.
+  uint32 scan_row_budget = 6;
+}
+
+message SubmitSubQueryReply {
+  bool accepted = 1;
+  string request_id = 2;
+  string node_id = 3;
+  string message = 4;
+}
+
+message FetchSubChunkRequest {
+  string request_id = 1;
+  uint32 max_rows = 2;
+}
+
+message FetchSubChunkReply {
+  bool found = 1;
+  string request_id = 2;
+  string node_id = 3;
+  repeated TripRow rows = 4;
+  bool done = 5;
+  uint32 rows_returned = 6;
+  string message = 7;
+}
+
+message CancelSubQueryRequest {
+  string request_id = 1;
+}
+
+message CancelSubQueryReply {
+  bool success = 1;
+  string request_id = 2;
+  string node_id = 3;
+  string message = 4;
+}

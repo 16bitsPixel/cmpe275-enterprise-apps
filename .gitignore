@@ -3,3 +3,13 @@ build/
 .vscode/
 .DS_Store
 basic/.DS_Store
+bench_results_grpah.csv
+runtime_phase1_vs_phase2_ieee.png
+runtime_vs_threads_ieee.png
+throughput_phase1_vs_phase2_ieee.png
+test_omp
+test_omp.cpp
+
+basic/plot_bench.py
+basic/results/
+basic/legacy/2019_Yellow_Taxi_Trip_Data_20260215.csv

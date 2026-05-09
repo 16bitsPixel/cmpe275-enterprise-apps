@@ -1,93 +1,60 @@
-# src files. For inlined headers, include header as a source
-set(lib-srcs
-    stuff/aclass.cpp
-)
+add_library(mini2_core
+    common/config.cc
 
-# library targets
-add_library(stuff ${lib-srcs})
-target_link_libraries(stuff PRIVATE ${Boost_LIBRARIES} ${SOCKET_LIBRARY})
+    dataset/PartitionLoader.cpp
+    dataset/TaxiTripDataset.cpp
 
-# dependencies
-set(BUILD_LIBRARIES stuff pthread)
+    query/LocalQueryEngine.cpp
 
-# ============================================================
-# OpenMP detection (cross-platform)
-# ============================================================
-find_package(OpenMP)
+    querycoordination/QueryCoordinator.cpp
+    querycoordination/RequestState.cpp
+    querycoordination/WorkerNode.cpp
 
-if(APPLE)
-    message(STATUS "Apple detected: using Homebrew libomp flags")
-elseif(OpenMP_CXX_FOUND)
-    message(STATUS "Found OpenMP")
-else()
-    message(FATAL_ERROR "OpenMP not found")
-endif()
+    transport/QueryProtoConverters.cpp
+    transport/GrpcRemoteQueryClient.cpp
+    transport/node_stub.cc
 
-# ============================================================
-# App target: mini1A (implementationA)
-# ============================================================
-add_executable(mini1A
-    apps/implementationA/main.cpp
-    apps/implementationA/phase1/csvReader.cpp
-    apps/implementationA/taxiTripParser.cpp
-    apps/implementationA/taxiTripStore.cpp
-    apps/implementationA/taxiTripQuerySpec.cpp
-    apps/implementationA/benchmarkRunner.cpp
-    apps/implementationA/phase2/query.cpp
-    apps/implementationA/phase2/ingest.cpp
-    apps/implementationA/phase3/query_soa.cpp
-    apps/implementationA/phase3/ingest_soa.cpp
-)
+    server/BasecampServiceImpl.cpp
+    server/QueryServiceImpl.cpp
 
-if(APPLE)
-    target_include_directories(mini1A PRIVATE /opt/homebrew/opt/libomp/include)
-    target_compile_options(mini1A PRIVATE -Xpreprocessor -fopenmp)
-    target_link_libraries(mini1A PRIVATE ${BUILD_LIBRARIES} /opt/homebrew/opt/libomp/lib/libomp.dylib)
-else()
-    target_link_libraries(mini1A PRIVATE ${BUILD_LIBRARIES} OpenMP::OpenMP_CXX)
-endif()
-
-target_compile_features(mini1A PRIVATE cxx_std_17)
-
-# ============================================================
-# Phase 1/2 streaming implementation (your dataset + predicates)
-# ============================================================
-set(phase1-srcs
     taxi/BufferedFileReader.cpp
     taxi_implementation/TaxiTripCSVParser.cpp
-    dataset/TaxiTripDataset.cpp
-    metrics/BenchmarkRunner.cpp
 )
 
-add_library(phase1lib ${phase1-srcs})
-
-target_include_directories(phase1lib PUBLIC
-    ${CMAKE_CURRENT_LIST_DIR}
+target_include_directories(mini2_core
+    PUBLIC
+        ${PROJECT_INCLUDE_DIRS}
 )
 
-target_compile_features(phase1lib PUBLIC cxx_std_17)
-target_link_libraries(phase1lib PRIVATE ${Boost_LIBRARIES} ${SOCKET_LIBRARY})
-# Executables for Phase 1 and Phase 2 streaming
-add_executable(streamingmain apps/streamingmain.cpp)
-target_link_libraries(streamingmain PRIVATE phase1lib ${BUILD_LIBRARIES})
-target_compile_features(streamingmain PRIVATE cxx_std_17)
+target_link_libraries(mini2_core
+    PUBLIC
+        basecamp_grpc_proto
+        query_grpc_proto
+        ${_REFLECTION}
+        ${_GRPC_GRPCPP}
+        ${_PROTOBUF_LIBPROTOBUF}
+        Threads::Threads
+)
 
-# ============================================================
-# OpenMP flags for macOS (Homebrew libomp)
-# ============================================================
-if(APPLE)
-    # Enable OpenMP for the library
-    target_include_directories(phase1lib PUBLIC /opt/homebrew/opt/libomp/include)
-    target_compile_options(phase1lib PUBLIC -Xpreprocessor -fopenmp)
-    target_link_libraries(phase1lib PUBLIC /opt/homebrew/opt/libomp/lib/libomp.dylib)
+enable_target_openmp(mini2_core)
 
-    # Enable OpenMP for the executables
-    target_compile_options(streamingmain PRIVATE -Xpreprocessor -fopenmp)
-    target_link_libraries(streamingmain PRIVATE /opt/homebrew/opt/libomp/lib/libomp.dylib)
-else()
-    # Non-Apple platforms: link OpenMP properly if found
-    if(OpenMP_CXX_FOUND)
-        target_link_libraries(phase1lib PUBLIC OpenMP::OpenMP_CXX)
-        target_link_libraries(streamingmain PRIVATE OpenMP::OpenMP_CXX)
-    endif()
-endif()
+add_executable(node_server
+    server/main.cpp
+)
+
+target_include_directories(node_server PRIVATE ${PROJECT_INCLUDE_DIRS})
+target_link_libraries(node_server PRIVATE mini2_core)
+
+add_executable(basecamp_client
+    client/basecamp_client.cc
+)
+
+target_include_directories(basecamp_client PRIVATE ${PROJECT_INCLUDE_DIRS})
+target_link_libraries(basecamp_client PRIVATE mini2_core)
+
+add_executable(query_client
+    client/query_client.cc
+)
+
+target_include_directories(query_client PRIVATE ${PROJECT_INCLUDE_DIRS})
+target_link_libraries(query_client PRIVATE mini2_core)
