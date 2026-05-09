@@ -7,6 +7,16 @@
 #include <sstream>
 #include <vector>
 
+namespace
+{
+    constexpr std::size_t SMALL_CHUNK_SIZE = 500;
+    constexpr std::size_t DEFAULT_CHUNK_SIZE = 1000;
+    constexpr std::size_t LARGE_CHUNK_SIZE = 5000;
+
+    constexpr std::size_t PRESSURE_ROW_LIMIT = 10000;
+    constexpr std::size_t PRESSURE_REQUEST_LIMIT = 10;
+}
+
 QueryCoordinator::QueryCoordinator() = default;
 
 void QueryCoordinator::addWorker(const WorkerNode &worker)
@@ -61,22 +71,11 @@ QueryResult QueryCoordinator::runExecute(QueryRequest &request)
     RequestState &state = createRequestState(request);
     state.setState(QueryState::IN_PROGRESS);
 
-    QueryResult result{};
+    initializeExecuteProgress(state, request);
+    fetchNextExecuteChunks(state, request.chunkSize);
 
-    if (canProcessLocally(request))
-    {
-        result = processLocalExecute(request);
-    }
-    else
-    {
-        const std::vector<std::size_t> targetWorkers = determineTargetWorkers(request);
-        state.setExpectedWorkers(targetWorkers.size());
-        result = processDistributedExecute(request, targetWorkers);
-    }
-
-    state.getAggregatedResult() = result;
-
-    if (state.getState() == QueryState::IN_PROGRESS)
+    if (state.allWorkersCompleted() &&
+        state.getNextUnreadIndex() >= state.getAggregatedResult().matchedTrips.size())
     {
         state.setState(QueryState::COMPLETED);
     }
@@ -84,24 +83,32 @@ QueryResult QueryCoordinator::runExecute(QueryRequest &request)
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> duration = end - start;
 
-    std::cout << "EXECUTE query completed: " << request.getQueryId() << std::endl;
+    std::cout << "EXECUTE query initialized/fetched first chunk: "
+              << request.getQueryId() << std::endl;
     std::cout << "Execution time (ms): " << duration.count() * 1000 << "ms" << std::endl;
 
-    return result;
+    return state.getAggregatedResult();
 }
 
 std::string QueryCoordinator::submitClientQuery(QueryRequest request)
 {
     const std::string queryId = ensureQueryId(request);
 
+    // Marks the entry node as visited before forwarding through the overlay.
+    request.markVisitedNode(selfNodeId_);
+
     if (request.getQueryType() == QueryType::Count)
     {
         runCount(request);
+        return queryId;
     }
-    else
-    {
-        runExecute(request);
-    }
+
+    RequestState &state = createRequestState(request);
+    state.setState(QueryState::IN_PROGRESS);
+    initializeExecuteProgress(state, request);
+
+    std::cout << "[submit client query] initialized EXECUTE request="
+              << queryId << " for on-demand chunk fetching\n";
 
     return queryId;
 }
@@ -115,18 +122,26 @@ std::string QueryCoordinator::submitSubQuery(QueryRequest request, const std::st
 
     request.distributedAllowed = true;
 
+    // Marks this node as visited so downstream forwarding avoids duplicate paths.
+    request.markVisitedNode(selfNodeId_);
+
     if (request.getQueryType() == QueryType::Count)
     {
         runCount(request);
+        return queryId;
     }
-    else
-    {
-        runExecute(request);
-    }
+
+    RequestState &state = createRequestState(request);
+    state.setState(QueryState::IN_PROGRESS);
+    initializeExecuteProgress(state, request);
+
+    std::cout << "[submit subquery] initialized EXECUTE request="
+              << queryId << " for on-demand child chunk fetching\n";
 
     return queryId;
 }
 
+// Fetches the next RPC chunk and pulls local/remote data on demand when the cache is exhausted.
 QueryCoordinator::RpcChunkResult QueryCoordinator::fetchChunkForRpc(const std::string &requestId,
                                                                     std::size_t maxRows)
 {
@@ -158,9 +173,6 @@ QueryCoordinator::RpcChunkResult QueryCoordinator::fetchChunkForRpc(const std::s
         return out;
     }
 
-    const QueryResult &agg = state->getAggregatedResult();
-
-    // COUNT queries return no trips, only completion info.
     if (state->getRequest().getQueryType() == QueryType::Count)
     {
         out.done = true;
@@ -168,40 +180,66 @@ QueryCoordinator::RpcChunkResult QueryCoordinator::fetchChunkForRpc(const std::s
         return out;
     }
 
+    const std::size_t adaptiveMaxRows = chooseAdaptiveChunkSize(maxRows);
+
+    QueryResult &agg = state->getAggregatedResult();
+
+    if (state->getNextUnreadIndex() >= agg.matchedTrips.size() &&
+        !state->allWorkersCompleted())
+    {
+        fetchNextExecuteChunks(*state, adaptiveMaxRows);
+    }
+
     const std::size_t start = state->getNextUnreadIndex();
     const std::size_t available = agg.matchedTrips.size();
 
     if (start >= available)
     {
-        out.done = true;
-        out.message = "done";
+        out.done = state->allWorkersCompleted();
+        out.message = out.done ? "done" : "no rows available yet";
         return out;
     }
 
-    const std::size_t take = std::min(
-        maxRows == 0 ? std::size_t(64) : maxRows,
-        available - start
-    );
+    const std::size_t take = std::min(adaptiveMaxRows, available - start);
 
-    // out.trips = materializeTripsForChunk(agg, start, take);
-    out.trips.insert(out.trips.end(),
-                 agg.matchedTrips.begin() + static_cast<std::ptrdiff_t>(start),
-                 agg.matchedTrips.begin() + static_cast<std::ptrdiff_t>(start + take));
+    out.trips.insert(
+        out.trips.end(),
+        agg.matchedTrips.begin() + static_cast<std::ptrdiff_t>(start),
+        agg.matchedTrips.begin() + static_cast<std::ptrdiff_t>(start + take));
 
-    if (agg.matchedTripSources.size() >= start + take) {
+    if (agg.matchedTripSources.size() >= start + take)
+    {
         out.sources.insert(
             out.sources.end(),
             agg.matchedTripSources.begin() + static_cast<std::ptrdiff_t>(start),
-            agg.matchedTripSources.begin() + static_cast<std::ptrdiff_t>(start + take)
-        );
-    } else {
+            agg.matchedTripSources.begin() + static_cast<std::ptrdiff_t>(start + take));
+    }
+    else
+    {
         out.sources.insert(out.sources.end(), take, selfNodeId_);
     }
 
     state->setNextUnreadIndex(start + take);
 
-    out.done = (state->getNextUnreadIndex() >= available);
+    if (state->getNextUnreadIndex() >= agg.matchedTrips.size() &&
+        state->allWorkersCompleted())
+    {
+        state->setState(QueryState::COMPLETED);
+        out.done = true;
+    }
+    else
+    {
+        out.done = false;
+    }
+
     out.message = out.done ? "done" : "more";
+
+    std::cout << "[adaptive on-demand chunk] request=" << requestId
+              << " pressure=" << getCoordinatorPressureRatio()
+              << " chunkSize=" << adaptiveMaxRows
+              << " emitted=" << take
+              << " done=" << (out.done ? "true" : "false")
+              << "\n";
 
     return out;
 }
@@ -326,7 +364,10 @@ QueryResult QueryCoordinator::processLocalExecute(const QueryRequest &request)
         state->setExpectedWorkers(1);
     }
 
-    result = workers_[targets.front()].runExecute(request);
+    QueryRequest localReq = request;
+    localReq.chunkSize = chooseAdaptiveChunkSize(request.chunkSize);
+
+    result = workers_[targets.front()].runExecute(localReq);
 
     if (state != nullptr)
     {
@@ -344,7 +385,6 @@ QueryResult QueryCoordinator::processDistributedCount(
 
     std::vector<QueryResult> partialResults;
 
-    // 1. Local count on this process only.
     for (const auto &worker : workers_)
     {
         if (worker.getNodeId() == selfNodeId_)
@@ -355,7 +395,6 @@ QueryResult QueryCoordinator::processDistributedCount(
         }
     }
 
-    // 2. Remote count on neighbors.
     if (overlay_ == nullptr || !remoteClient_)
     {
         return aggregateCountResults(partialResults);
@@ -368,7 +407,7 @@ QueryResult QueryCoordinator::processDistributedCount(
 
         QueryRequest remoteReq = request;
         remoteReq.setQueryType(QueryType::Count);
-        remoteReq.distributedAllowed = false;
+        remoteReq.distributedAllowed = true;
 
         std::string remoteRequestId;
         std::string message;
@@ -378,8 +417,7 @@ QueryResult QueryCoordinator::processDistributedCount(
             remoteReq,
             request.getQueryId(),
             remoteRequestId,
-            message
-        );
+            message);
 
         if (!ok)
         {
@@ -388,9 +426,6 @@ QueryResult QueryCoordinator::processDistributedCount(
             continue;
         }
 
-        // Current FetchSubChunk returns rows, not count metadata.
-        // So for Milestone 6, this only proves remote COUNT dispatch.
-        // Full count aggregation needs count fields in the proto reply.
         std::vector<TaxiTrip> trips;
         std::vector<std::string> sources;
         bool done = false;
@@ -402,8 +437,7 @@ QueryResult QueryCoordinator::processDistributedCount(
             trips,
             sources,
             done,
-            message
-        );
+            message);
 
         if (!ok)
         {
@@ -426,120 +460,15 @@ QueryResult QueryCoordinator::processDistributedExecute(
     const QueryRequest &request,
     const std::vector<std::size_t> &targetWorkers)
 {
-    std::vector<QueryResult> partialResults;
+    (void)targetWorkers;
 
-    // 1. Local execution (self node)
-    for (const auto& worker : workers_)
-    {
-        if (worker.getNodeId() == selfNodeId_)
-        {
-            QueryResult local = worker.runExecute(request);
-            partialResults.push_back(local);
-        }
-    }
+    RequestState &state = createRequestState(request);
+    state.setState(QueryState::IN_PROGRESS);
 
-    // recursive child forwarding
-    if (overlay_ == nullptr || !remoteClient_) {
-        return aggregateExecuteResults(partialResults, request);
-    }
+    initializeExecuteProgress(state, request);
+    fetchNextExecuteChunks(state, request.chunkSize);
 
-    // 2. Remote execution
-    for (const std::string& neighborId : overlay_->getChildren(selfNodeId_))
-    {
-        std::string remoteRequestId;
-        std::string message;
-
-        QueryRequest childReq = request;
-        childReq.distributedAllowed = true;
-
-        bool ok = remoteClient_->submitSubQuery(
-            neighborId,
-            childReq,
-            request.getQueryId(),
-            remoteRequestId,
-            message
-        );
-
-        if (!ok)
-        {
-            std::cout << "[distributed] submitSubQuery failed for "
-                      << neighborId << ": " << message << "\n";
-            continue;
-        }
-
-        std::vector<TaxiTrip> allTrips;
-        std::vector<std::string> allSources;
-        bool done = false;
-
-        const std::size_t childFetchSize = request.chunkSize == 0 ? std::size_t(64) : request.chunkSize;
-
-        while (!done) {
-            std::vector<TaxiTrip> trips;
-            std::vector<std::string> sources;
-
-            ok = remoteClient_->fetchSubChunk(
-                neighborId,
-                remoteRequestId,
-                childFetchSize,
-                trips,
-                sources,
-                done,
-                message
-            );
-
-            if (!ok)
-            {
-                std::cout << "[distributed] fetchSubChunk failed for "
-                        << neighborId << ": " << message << "\n";
-                break;
-            }
-
-            std::cout << "[distributed] node=" << selfNodeId_
-              << " child=" << neighborId
-              << " fetched trips=" << trips.size()
-              << " sources=" << sources.size()
-              << " done=" << (done ? "true" : "false")
-              << "\n";
-
-            allTrips.insert(
-                allTrips.end(),
-                trips.begin(),
-                trips.end()
-            );
-
-            if (sources.size() == trips.size()) {
-                allSources.insert(
-                    allSources.end(),
-                    sources.begin(),
-                    sources.end()
-                );
-            } else {
-                allSources.insert(
-                    allSources.end(),
-                    trips.size(),
-                    neighborId
-                );
-            }
-
-            if (trips.empty() && !done) {
-                std::cout << "[distributed] child=" << neighborId
-                          << " returned empty chunk but not done; stopping to avoid loop\n";
-                break;
-            }
-        }
-
-        QueryResult remoteResult{};
-        remoteResult.rowsScanned = allTrips.size();
-        remoteResult.rowsMatched = allTrips.size();
-        remoteResult.rowsEmitted = allTrips.size();
-        remoteResult.matchedTrips = std::move(allTrips);
-        remoteResult.matchedTripSources = std::move(allSources);
-        remoteResult.hasMore = false;
-
-        partialResults.push_back(std::move(remoteResult));
-    }
-
-    return aggregateExecuteResults(partialResults, request);
+    return state.getAggregatedResult();
 }
 
 QueryResult QueryCoordinator::aggregateCountResults(const std::vector<QueryResult> &results) const
@@ -563,51 +492,10 @@ QueryResult QueryCoordinator::aggregateExecuteResults(
 
     for (const auto &result : results)
     {
-        aggregated.rowsScanned += result.rowsScanned;
-        aggregated.rowsMatched += result.rowsMatched;
-        aggregated.rowsSkipped += result.rowsSkipped;
-        aggregated.rowsEmitted += result.rowsEmitted;
-
-        aggregated.matchedRows.insert(
-            aggregated.matchedRows.end(),
-            result.matchedRows.begin(),
-            result.matchedRows.end()
-        );
-
-        aggregated.matchedTrips.insert(
-            aggregated.matchedTrips.end(),
-            result.matchedTrips.begin(),
-            result.matchedTrips.end()
-        );
-
-        aggregated.matchedTripSources.insert(
-            aggregated.matchedTripSources.end(),
-            result.matchedTripSources.begin(),
-            result.matchedTripSources.end()
-        );
-
-        if (result.hasMore)
-        {
-            aggregated.hasMore = true;
-        }
+        aggregated.merge(result);
     }
 
     aggregated.rowsEmitted = aggregated.matchedTrips.size();
-
-    /* DEBUG
-    std::cout << "[aggregate debug] node=" << selfNodeId_
-              << " results_in=" << results.size()
-              << " totalTrips=" << aggregated.matchedTrips.size()
-              << " totalSources=" << aggregated.matchedTripSources.size()
-              << "\n";
-
-    for (std::size_t i = 60; i < aggregated.matchedTripSources.size() && i < 75; ++i)
-    {
-        std::cout << "[aggregate debug] i=" << i
-                  << " source=" << aggregated.matchedTripSources[i]
-                  << "\n";
-    }
-    */
 
     (void)request;
     return aggregated;
@@ -675,6 +563,312 @@ std::string QueryCoordinator::ensureQueryId(QueryRequest &request)
     return request.getQueryId();
 }
 
+// Chooses chunk size dynamically using caller limits and current coordinator pressure.
+std::size_t QueryCoordinator::chooseAdaptiveChunkSize(std::size_t requestedMaxRows) const
+{
+    const double pressure = getCoordinatorPressureRatio();
+
+    std::size_t recommended = DEFAULT_CHUNK_SIZE;
+
+    if (pressure >= 0.80)
+    {
+        recommended = SMALL_CHUNK_SIZE;
+    }
+    else if (pressure <= 0.20)
+    {
+        recommended = LARGE_CHUNK_SIZE;
+    }
+
+    if (requestedMaxRows == 0)
+    {
+        return recommended;
+    }
+
+    return std::min(requestedMaxRows, recommended);
+}
+
+// Estimates coordinator pressure from active requests and cached result rows.
+double QueryCoordinator::getCoordinatorPressureRatio() const
+{
+    std::size_t activeRequests = 0;
+    std::size_t cachedRows = 0;
+
+    for (const auto &state : queryStates_)
+    {
+        if (!state.isTerminal())
+        {
+            ++activeRequests;
+        }
+
+        cachedRows += state.getAggregatedResult().matchedTrips.size();
+    }
+
+    const double requestPressure =
+        static_cast<double>(activeRequests) /
+        static_cast<double>(PRESSURE_REQUEST_LIMIT);
+
+    const double rowPressure =
+        static_cast<double>(cachedRows) /
+        static_cast<double>(PRESSURE_ROW_LIMIT);
+
+    return std::min(1.0, std::max(requestPressure, rowPressure));
+}
+
+// Initializes local and child progress records for later on-demand EXECUTE chunk fetching.
+void QueryCoordinator::initializeExecuteProgress(RequestState &state, const QueryRequest &request)
+{
+    std::size_t expectedWorkers = 0;
+
+    for (const auto &worker : workers_)
+    {
+        if (request.targetNodeId.has_value())
+        {
+            if (worker.getNodeId() != request.targetNodeId.value())
+            {
+                continue;
+            }
+        }
+        else if (!selfNodeId_.empty() && worker.getNodeId() != selfNodeId_)
+        {
+            continue;
+        }
+
+        state.initializeWorker(worker.getNodeId());
+        ++expectedWorkers;
+        break;
+    }
+
+    if (request.distributedAllowed && overlay_ != nullptr && remoteClient_)
+    {
+        for (const std::string &childId : overlay_->getChildren(selfNodeId_))
+        {
+            if (request.hasVisitedNode(childId))
+            {
+                std::cout << "[overlay] skipping already visited child="
+                          << childId << " for request=" << state.getQueryId() << "\n";
+                continue;
+            }
+
+            state.initializeWorker(childId);
+            ++expectedWorkers;
+        }
+    }
+
+    state.setExpectedWorkers(expectedWorkers);
+}
+
+// Fetches one bounded local worker chunk and appends it to the request's cached result window.
+bool QueryCoordinator::fetchLocalExecuteChunk(RequestState &state, std::size_t maxRows)
+{
+    const QueryRequest &baseRequest = state.getRequest();
+
+    for (const auto &worker : workers_)
+    {
+        if (baseRequest.targetNodeId.has_value())
+        {
+            if (worker.getNodeId() != baseRequest.targetNodeId.value())
+            {
+                continue;
+            }
+        }
+        else if (!selfNodeId_.empty() && worker.getNodeId() != selfNodeId_)
+        {
+            continue;
+        }
+
+        WorkerProgress &progress = state.getWorkerProgress(worker.getNodeId());
+        if (progress.completed)
+        {
+            return false;
+        }
+
+        QueryRequest localReq = baseRequest;
+        localReq.distributedAllowed = false;
+        localReq.startRow = progress.nextStartRow;
+        localReq.chunkSize = chooseAdaptiveChunkSize(maxRows);
+
+        // Bounds one local scan window so selective filters do not block one FetchChunk too long.
+        localReq.scanRowBudget = 50000;
+
+        QueryResult local = worker.runExecute(localReq);
+
+        state.mergePartialResult(local);
+        state.updateWorkerProgress(worker.getNodeId(),
+                                   local.nextStartRow,
+                                   local.hasMore);
+
+        return !local.matchedTrips.empty();
+    }
+
+    return false;
+}
+// Fetches one remote child chunk per active child and appends it to the cached result window.
+bool QueryCoordinator::fetchRemoteExecuteChunks(RequestState &state, std::size_t maxRows)
+{
+    if (overlay_ == nullptr || !remoteClient_)
+    {
+        return false;
+    }
+
+    const QueryRequest &baseRequest = state.getRequest();
+    const std::vector<std::string> children = overlay_->getChildren(selfNodeId_);
+    bool fetchedAnyRows = false;
+
+    for (const std::string &childId : children)
+    {
+        if (baseRequest.hasVisitedNode(childId))
+        {
+            std::cout << "[on-demand remote] skipping already visited child="
+                      << childId << " request=" << state.getQueryId() << "\n";
+            continue;
+        }
+
+        WorkerProgress &progress = state.getWorkerProgress(childId);
+
+        if (progress.completed)
+        {
+            continue;
+        }
+
+        std::string message;
+
+        if (!progress.submitted)
+        {
+            QueryRequest childReq = baseRequest;
+            childReq.distributedAllowed = true;
+            childReq.chunkSize = chooseAdaptiveChunkSize(maxRows);
+
+            // Carries the visited path so shared overlay nodes are not queried twice.
+            childReq.markVisitedNode(selfNodeId_);
+
+            // Mark all direct outgoing children from this node as scheduled/visited.
+            // This helps avoid duplicate traversal in overlays with multiple paths.
+            for (const std::string &scheduledChildId : children)
+            {
+                childReq.markVisitedNode(scheduledChildId);
+            }
+
+            bool ok = remoteClient_->submitSubQuery(
+                childId,
+                childReq,
+                state.getQueryId(),
+                progress.remoteRequestId,
+                message);
+
+            if (!ok)
+            {
+                std::cout << "[on-demand remote] submitSubQuery failed child="
+                          << childId << ": " << message << "\n";
+                progress.completed = true;
+                progress.hasMore = false;
+                continue;
+            }
+
+            progress.submitted = true;
+
+            std::cout << "[on-demand remote] submitted child="
+                      << childId << " remoteRequestId="
+                      << progress.remoteRequestId << "\n";
+        }
+
+        std::vector<TaxiTrip> trips;
+        std::vector<std::string> sources;
+        bool done = false;
+
+        bool ok = remoteClient_->fetchSubChunk(
+            childId,
+            progress.remoteRequestId,
+            chooseAdaptiveChunkSize(maxRows),
+            trips,
+            sources,
+            done,
+            message);
+
+        if (!ok)
+        {
+            std::cout << "[on-demand remote] fetchSubChunk failed child="
+                      << childId << ": " << message << "\n";
+            progress.completed = true;
+            progress.hasMore = false;
+            continue;
+        }
+
+        QueryResult remoteResult{};
+        remoteResult.rowsScanned = trips.size();
+        remoteResult.rowsMatched = trips.size();
+        remoteResult.rowsEmitted = trips.size();
+        remoteResult.matchedTrips = std::move(trips);
+
+        if (sources.size() == remoteResult.matchedTrips.size())
+        {
+            remoteResult.matchedTripSources = std::move(sources);
+        }
+        else
+        {
+            remoteResult.matchedTripSources.insert(
+                remoteResult.matchedTripSources.end(),
+                remoteResult.matchedTrips.size(),
+                childId);
+        }
+
+        remoteResult.hasMore = !done;
+
+        state.mergePartialResult(remoteResult);
+        state.updateWorkerProgress(childId, progress.nextStartRow, !done);
+
+        if (!remoteResult.matchedTrips.empty())
+        {
+            fetchedAnyRows = true;
+        }
+
+        std::cout << "[on-demand remote] child=" << childId
+                  << " rows=" << remoteResult.matchedTrips.size()
+                  << " done=" << (done ? "true" : "false")
+                  << "\n";
+    }
+
+    return fetchedAnyRows;
+}
+
+// Pulls the next chunk window using alternating local-first and remote-first scheduling.
+bool QueryCoordinator::fetchNextExecuteChunks(RequestState &state, std::size_t maxRows)
+{
+    if (state.getNextUnreadIndex() >= state.getAggregatedResult().matchedTrips.size())
+    {
+        state.clearAggregatedRows();
+    }
+
+    bool localFetched = false;
+    bool remoteFetched = false;
+
+    if (state.shouldFetchRemoteFirst())
+    {
+        remoteFetched = fetchRemoteExecuteChunks(state, maxRows);
+        localFetched = fetchLocalExecuteChunk(state, maxRows);
+    }
+    else
+    {
+        localFetched = fetchLocalExecuteChunk(state, maxRows);
+        remoteFetched = fetchRemoteExecuteChunks(state, maxRows);
+    }
+
+    state.advanceFetchRound();
+
+    if (state.allWorkersCompleted())
+    {
+        state.setState(QueryState::COMPLETED);
+    }
+
+    std::cout << "[fair fetch] request=" << state.getQueryId()
+              << " round=" << state.getFetchRound()
+              << " order=" << (state.shouldFetchRemoteFirst() ? "remote-next" : "local-next")
+              << " localFetched=" << (localFetched ? "true" : "false")
+              << " remoteFetched=" << (remoteFetched ? "true" : "false")
+              << "\n";
+
+    return localFetched || remoteFetched;
+}
+
 std::vector<TaxiTrip> QueryCoordinator::materializeTripsForChunk(const QueryResult &result,
                                                                  std::size_t start,
                                                                  std::size_t count) const
@@ -692,10 +886,8 @@ std::vector<TaxiTrip> QueryCoordinator::materializeTripsForChunk(const QueryResu
     for (std::size_t i = start; i < end; ++i)
     {
         const RowRef &ref = result.matchedRows[i];
+        (void)ref;
 
-        // TODO:
-        // Replace this with real row materialization from WorkerNode / PartitionStore.
-        // For now, return an empty/default TaxiTrip carrying only a row ID if available.
         TaxiTrip trip{};
         trips.push_back(trip);
     }

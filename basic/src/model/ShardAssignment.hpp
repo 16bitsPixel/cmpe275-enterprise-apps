@@ -11,6 +11,7 @@
  * Responsibilities:
  * - identifies one source CSV file (shard unit)
  * - assigns that file to a specific node
+ * - stores shard weight information for load-aware optimization
  *
  * - used during startup and query execution planning
  */
@@ -32,10 +33,29 @@ struct ShardAssignment
     std::string nodeId;
 
     /*
+     * Number of trip records inside this shard.
+     *
+     * Used as a logical weight for load balancing.
+     */
+    uint64_t tripCount = 0;
+
+    /*
+     * File size in bytes.
+     *
+     * Used as a physical storage/IO weight for load balancing.
+     */
+    uint64_t fileSizeBytes = 0;
+
+    /*
      * Basic validity check.
+     *
+     * A shard is valid only if:
+     * - it has a source file
+     * - it has an assigned node
+     * - it has at least one trip record
      */
     bool isValid() const
     {
-        return !sourceFile.empty() && !nodeId.empty();
+        return !sourceFile.empty() && !nodeId.empty() && tripCount > 0;
     }
 };

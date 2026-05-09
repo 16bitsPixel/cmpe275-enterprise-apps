@@ -48,11 +48,17 @@ void RequestState::mergePartialResult(const QueryResult &partial)
     aggregatedResult_.merge(partial);
 }
 
+// Clears cached row/trip payloads while keeping query metadata and worker progress.
 void RequestState::clearAggregatedRows()
 {
     aggregatedResult_.matchedRows.clear();
+    aggregatedResult_.matchedTrips.clear();
+    aggregatedResult_.matchedTripSources.clear();
+
     aggregatedResult_.rowsSkipped = 0;
     aggregatedResult_.rowsEmitted = 0;
+
+    nextUnreadIndex_ = 0;
 }
 
 std::size_t RequestState::getNextUnreadIndex() const
@@ -63,6 +69,24 @@ std::size_t RequestState::getNextUnreadIndex() const
 void RequestState::setNextUnreadIndex(std::size_t index)
 {
     nextUnreadIndex_ = index;
+}
+
+// Returns the current fair scheduling round for this request.
+std::size_t RequestState::getFetchRound() const
+{
+    return fetchRound_;
+}
+
+// Advances the fair scheduling round after one fetch window is pulled.
+void RequestState::advanceFetchRound()
+{
+    ++fetchRound_;
+}
+
+// Alternates fetch order so local shards do not always run before child nodes.
+bool RequestState::shouldFetchRemoteFirst() const
+{
+    return (fetchRound_ % 2) == 1;
 }
 
 std::size_t RequestState::getExpectedWorkers() const
@@ -90,8 +114,22 @@ void RequestState::resetCompletedWorkers()
     completedWorkers_ = 0;
 }
 
+// Returns true when every tracked worker has completed, falling back to the old counter.
 bool RequestState::allWorkersCompleted() const
 {
+    if (!workerProgress_.empty())
+    {
+        for (const auto &entry : workerProgress_)
+        {
+            if (!entry.second.completed)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     return completedWorkers_ >= expectedWorkers_;
 }
 
@@ -121,6 +159,7 @@ const WorkerProgress *RequestState::findWorkerProgress(const std::string &nodeId
     return &it->second;
 }
 
+// Updates one worker cursor after a chunk response and marks it complete when no more data exists.
 void RequestState::updateWorkerProgress(const std::string &nodeId,
                                         std::size_t nextStartRow,
                                         bool hasMore)

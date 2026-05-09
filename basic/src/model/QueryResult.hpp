@@ -45,6 +45,7 @@ struct QueryResult
         matchedRows.push_back(RowRef{nodeId, localRowId});
     }
 
+    // Merges another partial result into this result while preserving chunk/source metadata.
     void merge(const QueryResult &other)
     {
         rowsScanned += other.rowsScanned;
@@ -59,6 +60,17 @@ struct QueryResult
         matchedTrips.insert(matchedTrips.end(),
                             other.matchedTrips.begin(),
                             other.matchedTrips.end());
+
+        matchedTripSources.insert(matchedTripSources.end(),
+                                  other.matchedTripSources.begin(),
+                                  other.matchedTripSources.end());
+
+        hasMore = hasMore || other.hasMore;
+
+        if (other.nextStartRow > nextStartRow)
+        {
+            nextStartRow = other.nextStartRow;
+        }
     }
 
     void printQueryResult() const

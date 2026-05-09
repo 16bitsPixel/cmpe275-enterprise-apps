@@ -5,18 +5,20 @@
 
 #include "QueryProtoConverters.hpp"
 
-GrpcRemoteQueryClient::GrpcRemoteQueryClient(const std::string& selfNodeId,
-                                             const OverlayConfig& overlay)
+GrpcRemoteQueryClient::GrpcRemoteQueryClient(const std::string &selfNodeId,
+                                             const OverlayConfig &overlay)
     : selfNodeId_(selfNodeId),
       overlay_(overlay) {}
 
-bool GrpcRemoteQueryClient::submitSubQuery(const std::string& targetNodeId,
-                                           const QueryRequest& request,
-                                           const std::string& parentRequestId,
-                                           std::string& remoteRequestId,
-                                           std::string& message) {
-    auto* stub = getOrCreateStub(targetNodeId);
-    if (!stub) {
+bool GrpcRemoteQueryClient::submitSubQuery(const std::string &targetNodeId,
+                                           const QueryRequest &request,
+                                           const std::string &parentRequestId,
+                                           std::string &remoteRequestId,
+                                           std::string &message)
+{
+    auto *stub = getOrCreateStub(targetNodeId);
+    if (!stub)
+    {
         remoteRequestId.clear();
         message = "no stub for target node";
         return false;
@@ -26,40 +28,59 @@ bool GrpcRemoteQueryClient::submitSubQuery(const std::string& targetNodeId,
     req.set_parent_request_id(parentRequestId);
     req.set_origin_node_id(selfNodeId_);
 
-    // If you later want a full toProtoSubmitSubQueryRequest helper, add it.
     QueryRequest local = request;
-    if (local.pickupRange) {
+
+    if (local.pickupRange)
+    {
         req.mutable_filter()->mutable_pickup_range()->set_lo(local.pickupRange->lo);
         req.mutable_filter()->mutable_pickup_range()->set_hi(local.pickupRange->hi);
     }
-    if (local.dropoffRange) {
+
+    if (local.dropoffRange)
+    {
         req.mutable_filter()->mutable_dropoff_range()->set_lo(local.dropoffRange->lo);
         req.mutable_filter()->mutable_dropoff_range()->set_hi(local.dropoffRange->hi);
     }
-    if (local.tripDistanceRange) {
+
+    if (local.tripDistanceRange)
+    {
         req.mutable_filter()->mutable_distance_range()->set_lo(local.tripDistanceRange->lo);
         req.mutable_filter()->mutable_distance_range()->set_hi(local.tripDistanceRange->hi);
     }
-    if (local.totalAmountRange) {
+
+    if (local.totalAmountRange)
+    {
         req.mutable_filter()->mutable_total_cents_range()->set_lo(local.totalAmountRange->lo);
         req.mutable_filter()->mutable_total_cents_range()->set_hi(local.totalAmountRange->hi);
     }
-    if (local.tipAmountRange) {
+
+    if (local.tipAmountRange)
+    {
         req.mutable_filter()->mutable_tip_cents_range()->set_lo(local.tipAmountRange->lo);
         req.mutable_filter()->mutable_tip_cents_range()->set_hi(local.tipAmountRange->hi);
     }
-    if (local.paymentType) {
+
+    if (local.paymentType)
+    {
         req.mutable_filter()->set_payment_type(*local.paymentType);
     }
 
     req.set_preferred_chunk_size(static_cast<uint32_t>(local.chunkSize));
+    req.set_scan_row_budget(static_cast<uint32_t>(local.scanRowBudget));
+
+    // Carries visited-node state so shared overlay nodes are not queried twice.
+    for (const auto &nodeId : local.visitedNodeIds)
+    {
+        req.add_visited_node_ids(nodeId);
+    }
 
     mini2::query::SubmitSubQueryReply resp;
     grpc::ClientContext ctx;
     ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(2000));
 
     grpc::Status status = stub->SubmitSubQuery(&ctx, req, &resp);
-    if (!status.ok()) {
+    if (!status.ok())
+    {
         remoteRequestId.clear();
         message = status.error_message();
         return false;
@@ -70,19 +91,21 @@ bool GrpcRemoteQueryClient::submitSubQuery(const std::string& targetNodeId,
     return resp.accepted();
 }
 
-bool GrpcRemoteQueryClient::fetchSubChunk(const std::string& targetNodeId,
-                                          const std::string& remoteRequestId,
+bool GrpcRemoteQueryClient::fetchSubChunk(const std::string &targetNodeId,
+                                          const std::string &remoteRequestId,
                                           std::size_t maxRows,
-                                          std::vector<TaxiTrip>& trips,
-                                          std::vector<std::string>& sources,
-                                          bool& done,
-                                          std::string& message) {
+                                          std::vector<TaxiTrip> &trips,
+                                          std::vector<std::string> &sources,
+                                          bool &done,
+                                          std::string &message)
+{
     trips.clear();
     sources.clear();
     done = false;
 
-    auto* stub = getOrCreateStub(targetNodeId);
-    if (!stub) {
+    auto *stub = getOrCreateStub(targetNodeId);
+    if (!stub)
+    {
         message = "no stub for target node";
         return false;
     }
@@ -96,18 +119,21 @@ bool GrpcRemoteQueryClient::fetchSubChunk(const std::string& targetNodeId,
     ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(2500));
 
     grpc::Status status = stub->FetchSubChunk(&ctx, req, &resp);
-    if (!status.ok()) {
+    if (!status.ok())
+    {
         message = status.error_message();
         return false;
     }
 
-    if (!resp.found()) {
+    if (!resp.found())
+    {
         message = resp.message();
         done = true;
         return false;
     }
 
-    for (const auto& row : resp.rows()) {
+    for (const auto &row : resp.rows())
+    {
         TaxiTrip trip{};
 
         trip.vendorId = static_cast<uint8_t>(row.vendor_id());
@@ -117,7 +143,8 @@ bool GrpcRemoteQueryClient::fetchSubChunk(const std::string& targetNodeId,
         trip.tripDistance = row.trip_distance();
         trip.rateCodeId = static_cast<uint8_t>(row.rate_code_id());
 
-        if (!row.store_and_fwd_flag().empty()) {
+        if (!row.store_and_fwd_flag().empty())
+        {
             trip.storeAndFwd = static_cast<uint8_t>(row.store_and_fwd_flag()[0]);
         }
 
@@ -136,9 +163,12 @@ bool GrpcRemoteQueryClient::fetchSubChunk(const std::string& targetNodeId,
 
         trips.push_back(trip);
 
-        if (!row.source_node_id().empty()) {
+        if (!row.source_node_id().empty())
+        {
             sources.push_back(row.source_node_id());
-        } else {
+        }
+        else
+        {
             sources.push_back(targetNodeId);
         }
     }
@@ -148,11 +178,13 @@ bool GrpcRemoteQueryClient::fetchSubChunk(const std::string& targetNodeId,
     return true;
 }
 
-bool GrpcRemoteQueryClient::cancelSubQuery(const std::string& targetNodeId,
-                                           const std::string& remoteRequestId,
-                                           std::string& message) {
-    auto* stub = getOrCreateStub(targetNodeId);
-    if (!stub) {
+bool GrpcRemoteQueryClient::cancelSubQuery(const std::string &targetNodeId,
+                                           const std::string &remoteRequestId,
+                                           std::string &message)
+{
+    auto *stub = getOrCreateStub(targetNodeId);
+    if (!stub)
+    {
         message = "no stub for target node";
         return false;
     }
@@ -165,7 +197,8 @@ bool GrpcRemoteQueryClient::cancelSubQuery(const std::string& targetNodeId,
     ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(1500));
 
     grpc::Status status = stub->CancelSubQuery(&ctx, req, &resp);
-    if (!status.ok()) {
+    if (!status.ok())
+    {
         message = status.error_message();
         return false;
     }
@@ -174,20 +207,24 @@ bool GrpcRemoteQueryClient::cancelSubQuery(const std::string& targetNodeId,
     return resp.success();
 }
 
-mini2::query::QueryService::Stub* GrpcRemoteQueryClient::getOrCreateStub(const std::string& targetNodeId) {
+mini2::query::QueryService::Stub *GrpcRemoteQueryClient::getOrCreateStub(const std::string &targetNodeId)
+{
     auto it = stubs_.find(targetNodeId);
-    if (it != stubs_.end()) {
+    if (it != stubs_.end())
+    {
         return it->second.get();
     }
 
     const std::string target = resolveTarget(targetNodeId);
-    if (target.empty()) {
+    if (target.empty())
+    {
         return nullptr;
     }
 
     auto channel = grpc::CreateChannel(target, grpc::InsecureChannelCredentials());
     auto stub = mini2::query::QueryService::NewStub(channel);
-    if (!stub) {
+    if (!stub)
+    {
         return nullptr;
     }
 
@@ -195,6 +232,7 @@ mini2::query::QueryService::Stub* GrpcRemoteQueryClient::getOrCreateStub(const s
     return insertIt->second.get();
 }
 
-std::string GrpcRemoteQueryClient::resolveTarget(const std::string& targetNodeId) const {
+std::string GrpcRemoteQueryClient::resolveTarget(const std::string &targetNodeId) const
+{
     return overlay_.endpointFor(targetNodeId);
 }

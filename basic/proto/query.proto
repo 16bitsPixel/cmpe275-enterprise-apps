@@ -40,6 +40,13 @@ message SubmitQueryRequest {
   QueryFilter filter = 1;
   uint32 preferred_chunk_size = 2;
   string client_tag = 3;
+
+  // Tracks nodes already visited by this request to avoid duplicate overlay traversal.
+  repeated string visited_node_ids = 4;
+
+  // Maximum number of physical rows a worker should scan per chunk.
+  // 0 means the server uses its default scan budget.
+  uint32 scan_row_budget = 5;
 }
 
 message SubmitQueryReply {
@@ -104,6 +111,13 @@ message SubmitSubQueryRequest {
   string origin_node_id = 2;
   QueryFilter filter = 3;
   uint32 preferred_chunk_size = 4;
+
+  // Carries visited-node state across subqueries in the directed overlay.
+  repeated string visited_node_ids = 5;
+
+  // Maximum number of physical rows a worker should scan per chunk.
+  // 0 means the server uses its default scan budget.
+  uint32 scan_row_budget = 6;
 }
 
 message SubmitSubQueryReply {

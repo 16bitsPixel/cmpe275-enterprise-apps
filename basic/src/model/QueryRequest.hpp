@@ -1,9 +1,12 @@
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 /*
  * Range
@@ -24,8 +27,8 @@ struct Range
  */
 enum class QueryType
 {
-    Count,   // return count only
-    Execute  // return row IDs / results
+    Count,  // return count only
+    Execute // return row IDs / results
 };
 
 /*
@@ -61,6 +64,23 @@ public:
         queryType = type;
     }
 
+    // Returns true if this request has already passed through the given node.
+    bool hasVisitedNode(const std::string &nodeId) const
+    {
+        return std::find(visitedNodeIds.begin(),
+                         visitedNodeIds.end(),
+                         nodeId) != visitedNodeIds.end();
+    }
+
+    // Marks a node as visited so overlay forwarding avoids duplicate traversal.
+    void markVisitedNode(const std::string &nodeId)
+    {
+        if (!hasVisitedNode(nodeId))
+        {
+            visitedNodeIds.push_back(nodeId);
+        }
+    }
+
 public:
     /*
      * ==== Distributed metadata ====
@@ -70,6 +90,12 @@ public:
     std::string entryNodeId;
     std::optional<std::string> targetNodeId;
     bool distributedAllowed = true;
+
+    /*
+     * Tracks nodes already visited by this request.
+     * This prevents duplicate traversal when the overlay graph has multiple paths.
+     */
+    std::vector<std::string> visitedNodeIds;
 
     /*
      * ==== Filter conditions ====
@@ -95,6 +121,12 @@ public:
 
     std::size_t startRow = 0;
     std::size_t chunkSize = 0;
+
+    /*
+     * Maximum number of physical rows a worker may scan during one chunk.
+     * 0 means the local query engine should use its default scan budget.
+     */
+    std::size_t scanRowBudget = 0;
 
 private:
     std::string queryId;

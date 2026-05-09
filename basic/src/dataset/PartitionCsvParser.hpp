@@ -33,18 +33,13 @@ struct ParsedPartitionRow
  * Parses CSV header fields and selected row fields needed for the
  * partitioned SoA store.
  *
- * Design goal:
- * - lightweight row parsing for large CSV ingestion
- * - strongly typed fields
- * - no per-row dynamic dispatch containers
+ * Supports both datetime formats:
+ * 1. 2020 Jan 01 12:28:15 AM
+ * 2. 2020-01-01 00:28:15
  */
 class PartitionCsvParser
 {
 public:
-    /*
-     * Initialize column indices from the CSV header row.
-     * Returns false if any required column is missing.
-     */
     bool initFromHeader(std::string_view headerLine)
     {
         idx_ = ColumnIndex{};
@@ -103,10 +98,6 @@ public:
         return true;
     }
 
-    /*
-     * Parse one CSV data row into strongly typed fields.
-     * Returns false if the row is malformed or essential data is invalid.
-     */
     bool parseRow(std::string_view line, ParsedPartitionRow &out) const
     {
         out = ParsedPartitionRow{};
@@ -136,11 +127,13 @@ public:
 
             if (idxCol == idx_.pickupDatetime)
             {
-                out.pickupDatetime = parseEpochMs_YYYYMonDD_HHMMSS_AMPM_UTC(a, static_cast<std::size_t>(b - a));
+                out.pickupDatetime =
+                    parseEpochMsFlexibleUTC(a, static_cast<std::size_t>(b - a));
             }
             else if (idxCol == idx_.dropoffDatetime)
             {
-                out.dropoffDatetime = parseEpochMs_YYYYMonDD_HHMMSS_AMPM_UTC(a, static_cast<std::size_t>(b - a));
+                out.dropoffDatetime =
+                    parseEpochMsFlexibleUTC(a, static_cast<std::size_t>(b - a));
             }
             else if (idxCol == idx_.tripDistance)
             {
@@ -203,122 +196,282 @@ private:
         int totalAmount = -1;
     };
 
-    /*
-     * Trim leading and trailing spaces/tabs within [a,b).
-     */
     static void trimSpaces(const char *&a, const char *&b)
     {
-        while (a < b && (*a == ' ' || *a == '\t'))
+        while (a < b && (*a == ' ' || *a == '\t' || *a == '\r'))
         {
             ++a;
         }
 
-        while (b > a && (b[-1] == ' ' || b[-1] == '\t'))
+        while (b > a && (b[-1] == ' ' || b[-1] == '\t' || b[-1] == '\r'))
         {
             --b;
         }
     }
 
-    static int64_t parseEpochMs_YYYYMonDD_HHMMSS_AMPM_UTC(const char *s, std::size_t len)
+    /*
+     * Flexible datetime parser.
+     * First tries: YYYY-MM-DD HH:MM:SS
+     * Then tries:  YYYY Mon DD HH:MM:SS AM/PM
+     */
+    static int64_t parseEpochMsFlexibleUTC(const char *s, std::size_t len)
     {
-        if (!s || len < 23) return 0;
+        int64_t epochMs = parseEpochMs_YYYYMMDD_HHMMSS_UTC(s, len);
 
-        auto is_digit = [](char c) { return c >= '0' && c <= '9'; };
-
-        // ---- Year ----
-        int year = 0;
-        for (int i = 0; i < 4; ++i) {
-            if (!is_digit(s[i])) return 0;
-            year = year * 10 + (s[i] - '0');
+        if (epochMs != 0)
+        {
+            return epochMs;
         }
 
-        if (s[4] != ' ') return 0;
+        return parseEpochMs_YYYYMonDD_HHMMSS_AMPM_UTC(s, len);
+    }
 
-        // ---- Month (3-letter) ----
-        int mon = -1;
-        const char *months[] = {
-            "Jan","Feb","Mar","Apr","May","Jun",
-            "Jul","Aug","Sep","Oct","Nov","Dec"
-        };
-
-        for (int i = 0; i < 12; ++i) {
-            if (s[5]==months[i][0] &&
-                s[6]==months[i][1] &&
-                s[7]==months[i][2]) {
-                mon = i + 1;
-                break;
-            }
-        }
-        if (mon == -1) return 0;
-
-        if (s[8] != ' ') return 0;
-
-        // ---- Day ----
-        if (!is_digit(s[9]) || !is_digit(s[10])) return 0;
-        int mday = (s[9]-'0')*10 + (s[10]-'0');
-
-        if (s[11] != ' ') return 0;
-
-        // ---- Time ----
-        auto to2 = [&](int i, int &out) -> bool {
-            if (!is_digit(s[i]) || !is_digit(s[i+1])) return false;
-            out = (s[i]-'0')*10 + (s[i+1]-'0');
-            return true;
-        };
-
-        int hour, min, sec;
-        if (!to2(12, hour) || s[14] != ':' ||
-            !to2(15, min) || s[17] != ':' ||
-            !to2(18, sec)) {
+    /*
+     * Parses format:
+     * YYYY-MM-DD HH:MM:SS
+     *
+     * Example:
+     * 2020-01-01 00:28:15
+     */
+    static int64_t parseEpochMs_YYYYMMDD_HHMMSS_UTC(const char *s, std::size_t len)
+    {
+        if (!s || len < 19)
+        {
             return 0;
         }
 
-        if (s[20] != ' ') return 0;
+        auto is_digit = [](char c)
+        {
+            return c >= '0' && c <= '9';
+        };
 
-        // ---- AM/PM ----
-        bool is_pm;
-        if (s[21]=='A' && s[22]=='M') is_pm = false;
-        else if (s[21]=='P' && s[22]=='M') is_pm = true;
-        else return 0;
-
-        // ---- Convert 12h → 24h ----
-        if (hour < 1 || hour > 12) return 0;
-
-        if (hour == 12) {
-            hour = is_pm ? 12 : 0;   // 12 AM = 00, 12 PM = 12
-        } else if (is_pm) {
-            hour += 12;
+        if (!is_digit(s[0]) || !is_digit(s[1]) || !is_digit(s[2]) || !is_digit(s[3]) ||
+            s[4] != '-' ||
+            !is_digit(s[5]) || !is_digit(s[6]) ||
+            s[7] != '-' ||
+            !is_digit(s[8]) || !is_digit(s[9]) ||
+            s[10] != ' ' ||
+            !is_digit(s[11]) || !is_digit(s[12]) ||
+            s[13] != ':' ||
+            !is_digit(s[14]) || !is_digit(s[15]) ||
+            s[16] != ':' ||
+            !is_digit(s[17]) || !is_digit(s[18]))
+        {
+            return 0;
         }
 
-        // ---- Range checks ----
-        if (mday < 1 || mday > 31 ||
+        int year = (s[0] - '0') * 1000 +
+                   (s[1] - '0') * 100 +
+                   (s[2] - '0') * 10 +
+                   (s[3] - '0');
+
+        int mon = (s[5] - '0') * 10 +
+                  (s[6] - '0');
+
+        int mday = (s[8] - '0') * 10 +
+                   (s[9] - '0');
+
+        int hour = (s[11] - '0') * 10 +
+                   (s[12] - '0');
+
+        int min = (s[14] - '0') * 10 +
+                  (s[15] - '0');
+
+        int sec = (s[17] - '0') * 10 +
+                  (s[18] - '0');
+
+        if (mon < 1 || mon > 12 ||
+            mday < 1 || mday > 31 ||
+            hour < 0 || hour > 23 ||
             min < 0 || min > 59 ||
-            sec < 0 || sec > 60) {
+            sec < 0 || sec > 60)
+        {
             return 0;
         }
 
         std::tm tm{};
         tm.tm_year = year - 1900;
-        tm.tm_mon  = mon - 1;
+        tm.tm_mon = mon - 1;
         tm.tm_mday = mday;
         tm.tm_hour = hour;
-        tm.tm_min  = min;
-        tm.tm_sec  = sec;
+        tm.tm_min = min;
+        tm.tm_sec = sec;
 
 #ifdef _WIN32
-    std::time_t t = _mkgmtime(&tm);
+        std::time_t t = _mkgmtime(&tm);
 #else
-    std::time_t t = timegm(&tm);
+        std::time_t t = timegm(&tm);
 #endif
 
-        if (t == (std::time_t)-1) return 0;
+        if (t == static_cast<std::time_t>(-1))
+        {
+            return 0;
+        }
 
-        return (int64_t)t * 1000LL;
+        return static_cast<int64_t>(t) * 1000LL;
     }
 
     /*
-     * Parse int16 field. Returns 0 on failure.
+     * Existing parser kept for your current setup.
+     * Parses format:
+     * YYYY Mon DD HH:MM:SS AM/PM
+     *
+     * Example:
+     * 2020 Jan 01 12:28:15 AM
      */
+    static int64_t parseEpochMs_YYYYMonDD_HHMMSS_AMPM_UTC(const char *s, std::size_t len)
+    {
+        if (!s || len < 23)
+        {
+            return 0;
+        }
+
+        auto is_digit = [](char c)
+        {
+            return c >= '0' && c <= '9';
+        };
+
+        int year = 0;
+
+        for (int i = 0; i < 4; ++i)
+        {
+            if (!is_digit(s[i]))
+            {
+                return 0;
+            }
+
+            year = year * 10 + (s[i] - '0');
+        }
+
+        if (s[4] != ' ')
+        {
+            return 0;
+        }
+
+        int mon = -1;
+
+        const char *months[] = {
+            "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+
+        for (int i = 0; i < 12; ++i)
+        {
+            if (s[5] == months[i][0] &&
+                s[6] == months[i][1] &&
+                s[7] == months[i][2])
+            {
+                mon = i + 1;
+                break;
+            }
+        }
+
+        if (mon == -1)
+        {
+            return 0;
+        }
+
+        if (s[8] != ' ')
+        {
+            return 0;
+        }
+
+        if (!is_digit(s[9]) || !is_digit(s[10]))
+        {
+            return 0;
+        }
+
+        int mday = (s[9] - '0') * 10 + (s[10] - '0');
+
+        if (s[11] != ' ')
+        {
+            return 0;
+        }
+
+        auto to2 = [&](int i, int &out) -> bool
+        {
+            if (!is_digit(s[i]) || !is_digit(s[i + 1]))
+            {
+                return false;
+            }
+
+            out = (s[i] - '0') * 10 + (s[i + 1] - '0');
+            return true;
+        };
+
+        int hour = 0;
+        int min = 0;
+        int sec = 0;
+
+        if (!to2(12, hour) || s[14] != ':' ||
+            !to2(15, min) || s[17] != ':' ||
+            !to2(18, sec))
+        {
+            return 0;
+        }
+
+        if (s[20] != ' ')
+        {
+            return 0;
+        }
+
+        bool is_pm = false;
+
+        if (s[21] == 'A' && s[22] == 'M')
+        {
+            is_pm = false;
+        }
+        else if (s[21] == 'P' && s[22] == 'M')
+        {
+            is_pm = true;
+        }
+        else
+        {
+            return 0;
+        }
+
+        if (hour < 1 || hour > 12)
+        {
+            return 0;
+        }
+
+        if (hour == 12)
+        {
+            hour = is_pm ? 12 : 0;
+        }
+        else if (is_pm)
+        {
+            hour += 12;
+        }
+
+        if (mday < 1 || mday > 31 ||
+            min < 0 || min > 59 ||
+            sec < 0 || sec > 60)
+        {
+            return 0;
+        }
+
+        std::tm tm{};
+        tm.tm_year = year - 1900;
+        tm.tm_mon = mon - 1;
+        tm.tm_mday = mday;
+        tm.tm_hour = hour;
+        tm.tm_min = min;
+        tm.tm_sec = sec;
+
+#ifdef _WIN32
+        std::time_t t = _mkgmtime(&tm);
+#else
+        std::time_t t = timegm(&tm);
+#endif
+
+        if (t == static_cast<std::time_t>(-1))
+        {
+            return 0;
+        }
+
+        return static_cast<int64_t>(t) * 1000LL;
+    }
+
     static int16_t parseI16(const char *s, std::size_t len)
     {
         if (!s || len == 0)
@@ -343,9 +496,6 @@ private:
         return static_cast<int16_t>(value);
     }
 
-    /*
-     * Parse float field. Returns 0.0f on failure.
-     */
     static float parseFloat(const char *s, std::size_t len)
     {
         if (!s || len == 0)
@@ -358,14 +508,17 @@ private:
         std::memcpy(buf, s, n);
         buf[n] = '\0';
 
-        return std::strtof(buf, nullptr);
+        char *endPtr = nullptr;
+        float value = std::strtof(buf, &endPtr);
+
+        if (endPtr == buf)
+        {
+            return 0.0f;
+        }
+
+        return value;
     }
 
-    /*
-     * Parse a money field into cents.
-     * Example: 12.34 -> 1234
-     * Returns 0 on invalid input.
-     */
     static int32_t parseMoneyCents(const char *s, std::size_t len)
     {
         if (!s || len == 0)
@@ -377,6 +530,7 @@ private:
         const char *b = s + len;
 
         trimSpaces(a, b);
+
         if (a >= b)
         {
             return 0;
@@ -387,6 +541,7 @@ private:
             ++a;
             --b;
             trimSpaces(a, b);
+
             if (a >= b)
             {
                 return 0;
@@ -394,10 +549,12 @@ private:
         }
 
         bool neg = false;
+
         if (*a == '+' || *a == '-')
         {
             neg = (*a == '-');
             ++a;
+
             if (a >= b)
             {
                 return 0;
@@ -434,6 +591,7 @@ private:
             }
 
             bool roundUp = false;
+
             if (a < b && *a >= '0' && *a <= '9')
             {
                 if (*a >= '5')
@@ -455,6 +613,7 @@ private:
             if (roundUp)
             {
                 ++cents;
+
                 if (cents >= 100)
                 {
                     cents = 0;
@@ -470,7 +629,7 @@ private:
             }
         }
 
-        while (a < b && (*a == ' ' || *a == '\t'))
+        while (a < b && (*a == ' ' || *a == '\t' || *a == '\r'))
         {
             ++a;
         }
@@ -481,6 +640,7 @@ private:
         }
 
         int64_t total = dollars * 100 + cents;
+
         if (neg)
         {
             total = -total;
@@ -499,9 +659,6 @@ private:
         return static_cast<int32_t>(total);
     }
 
-    /*
-     * Normalize a header field to lowercase after trimming and stripping quotes.
-     */
     static void splitHeaderFieldNormalize(const char *a, const char *b, std::string &outLower)
     {
         trimSpaces(a, b);
@@ -523,9 +680,6 @@ private:
         }
     }
 
-    /*
-     * Map normalized header names to required column indices.
-     */
     static void applyHeaderFieldToIndex(const std::string &keyLower,
                                         int col,
                                         ColumnIndex &idx)

@@ -1,0 +1,20 @@
+===== OVERLAY COVERAGE SUMMARY =====
+request_id=q-1
+entry_node=A
+fetches_requested=120
+max_rows_per_fetch=10
+unique_source_count=9
+sources_observed=A,B,C,D,E,F,G,H,I
+source_A=yes
+source_B=yes
+source_C=yes
+source_D=yes
+source_E=yes
+source_F=yes
+source_G=yes
+source_H=yes
+source_I=yes
+deepest_path=confirmed: F -> E -> B -> A -> Client
+
+Expected full coverage: A,B,C,D,E,F,G,H,I
+Expected deepest path: F -> E -> B -> A -> Client

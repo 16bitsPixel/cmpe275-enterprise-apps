@@ -5,7 +5,7 @@
 #include <chrono>
 #include <iostream>
 
-static TaxiTrip toTaxiTrip(const ParsedPartitionRow& row)
+static TaxiTrip toTaxiTrip(const ParsedPartitionRow &row)
 {
     TaxiTrip trip{};
 
@@ -19,7 +19,7 @@ static TaxiTrip toTaxiTrip(const ParsedPartitionRow& row)
     return trip;
 }
 
-static void printQueryDebug(const QueryRequest& request)
+static void printQueryDebug(const QueryRequest &request)
 {
     std::cout << "[query debug] filters:"
               << " pickup=" << request.pickupRange.has_value()
@@ -146,9 +146,11 @@ LocalQueryResult LocalQueryEngine::count(const PartitionStore &store,
 
             ++result.rowsScanned;
 
-            if (!parser.parseRow(line, row)) {
+            if (!parser.parseRow(line, row))
+            {
                 ++parseFailures;
-                if (parseFailures <= 5) {
+                if (parseFailures <= 5)
+                {
                     std::cout << "[count] parse failed line sample: " << line << "\n";
                 }
                 continue;
@@ -185,10 +187,17 @@ LocalQueryResult LocalQueryEngine::execute(const PartitionStore &store,
 
     std::size_t localRowId = 0;
     const std::size_t startRow = request.startRow;
+
     const std::size_t chunkSize =
         (request.chunkSize == 0) ? std::numeric_limits<std::size_t>::max()
                                  : request.chunkSize;
 
+    // Bounds one worker scan window so selective filters do not block one FetchChunk too long.
+    const std::size_t scanRowBudget =
+        (request.scanRowBudget == 0) ? std::size_t(50000)
+                                     : request.scanRowBudget;
+
+    std::size_t scannedThisChunk = 0;
     std::size_t emitted = 0;
     std::size_t parseFailures = 0;
     std::size_t parsedRows = 0;
@@ -200,14 +209,16 @@ LocalQueryResult LocalQueryEngine::execute(const PartitionStore &store,
     {
         std::ifstream in(fileMeta.filePath);
 
-        if (!in.is_open()) {
+        if (!in.is_open())
+        {
             std::cout << "[execute] failed to open file\n";
             continue;
         }
 
         std::string headerLine;
 
-        if (!std::getline(in, headerLine)) {
+        if (!std::getline(in, headerLine))
+        {
             std::cout << "[execute] failed to read header\n";
             continue;
         }
@@ -216,7 +227,8 @@ LocalQueryResult LocalQueryEngine::execute(const PartitionStore &store,
 
         PartitionCsvParser parser;
 
-        if (!parser.initFromHeader(headerLine)) {
+        if (!parser.initFromHeader(headerLine))
+        {
             std::cout << "[execute] parser failed to init from header\n";
             continue;
         }
@@ -235,21 +247,49 @@ LocalQueryResult LocalQueryEngine::execute(const PartitionStore &store,
                 continue;
             }
 
+            // Stops this chunk after a bounded number of scanned physical rows.
+            if (scannedThisChunk >= scanRowBudget)
+            {
+                result.rowsEmitted = emitted;
+                result.nextStartRow = localRowId;
+                result.hasMore = true;
+
+                std::cout << "Execute Query: Scan budget reached. ScannedThisChunk="
+                          << scannedThisChunk
+                          << " Emitted=" << emitted
+                          << " Next Start Row=" << result.nextStartRow
+                          << " Parse Failures=" << parseFailures
+                          << " ParsedRows=" << parsedRows
+                          << " RejectedRows=" << rejectedRows
+                          << std::endl;
+
+                auto executeEnd = std::chrono::steady_clock::now();
+                auto executeDuration = std::chrono::duration_cast<std::chrono::milliseconds>(executeEnd - executeStart).count();
+                std::cout << "Total EXECUTE query execution time: " << executeDuration << " ms" << std::endl;
+
+                return result;
+            }
+
+            ++scannedThisChunk;
             ++result.rowsScanned;
 
             if (!parser.parseRow(line, row))
             {
                 ++localRowId;
                 ++parseFailures;
-                if (parseFailures <= 5) {
+
+                if (parseFailures <= 5)
+                {
                     std::cout << "[execute] parse failed line sample: " << line << std::endl;
                 }
+
                 continue;
             }
 
             ++parsedRows;
 
-            if (parsedRows <= 5) {
+            if (parsedRows <= 5)
+            {
                 std::cout << "[execute parsed row] localRowId=" << localRowId
                           << " payment=" << static_cast<int>(row.paymentType)
                           << " distance=" << row.tripDistance
@@ -263,13 +303,15 @@ LocalQueryResult LocalQueryEngine::execute(const PartitionStore &store,
                 ++localRowId;
                 ++rejectedRows;
 
-                if (rejectedRows <= 5) {
+                if (rejectedRows <= 5)
+                {
                     std::cout << "[execute rejected row] localRowId=" << localRowId
-                          << " payment=" << static_cast<int>(row.paymentType)
-                          << " distance=" << row.tripDistance
-                          << " tipCents=" << row.tipAmountCents
-                          << " totalCents=" << row.totalAmountCents << "\n";
+                              << " payment=" << static_cast<int>(row.paymentType)
+                              << " distance=" << row.tripDistance
+                              << " tipCents=" << row.tipAmountCents
+                              << " totalCents=" << row.totalAmountCents << "\n";
                 }
+
                 continue;
             }
 
@@ -279,24 +321,21 @@ LocalQueryResult LocalQueryEngine::execute(const PartitionStore &store,
             ++emitted;
             ++localRowId;
 
-            // Print only the first 1000 matched rows
-            /*
-            if (emitted <= 1000)
-            {
-                std::cout << "Matched Row ID: " << localRowId << std::endl; // Print matched rows
-            }
-            */
-
             if (emitted >= chunkSize)
             {
                 result.rowsEmitted = emitted;
                 result.nextStartRow = localRowId;
                 result.hasMore = true;
 
-                // Print a summary of the results after reaching the chunk size
-                std::cout << "Execute Query: Emitting " << emitted << " rows. Next Start Row: " << result.nextStartRow
-                          << " Parse Failures=" << parseFailures << " ParsedRows=" << parsedRows << " RejectedRows=" << rejectedRows << std::endl;
-                return result; // This causes early termination, emitting the chunk
+                std::cout << "Execute Query: Emitting " << emitted
+                          << " rows. Next Start Row: " << result.nextStartRow
+                          << " Parse Failures=" << parseFailures
+                          << " ParsedRows=" << parsedRows
+                          << " RejectedRows=" << rejectedRows
+                          << " ScannedThisChunk=" << scannedThisChunk
+                          << std::endl;
+
+                return result;
             }
         }
     }
@@ -305,9 +344,14 @@ LocalQueryResult LocalQueryEngine::execute(const PartitionStore &store,
     result.nextStartRow = localRowId;
     result.hasMore = false;
 
-    // Print a summary of the results
-    std::cout << "Execute Query: Scanned " << result.rowsScanned << " rows, Matched " << result.rowsMatched << " rows, Emitted " << result.rowsEmitted << " rows, "
-              << " Parse Failures=" << parseFailures << " ParsedRows=" << parsedRows << " RejectedRows=" << rejectedRows << std::endl;
+    std::cout << "Execute Query: Scanned " << result.rowsScanned
+              << " rows, Matched " << result.rowsMatched
+              << " rows, Emitted " << result.rowsEmitted
+              << " rows, Parse Failures=" << parseFailures
+              << " ParsedRows=" << parsedRows
+              << " RejectedRows=" << rejectedRows
+              << " ScannedThisChunk=" << scannedThisChunk
+              << std::endl;
 
     auto executeEnd = std::chrono::steady_clock::now();
     auto executeDuration = std::chrono::duration_cast<std::chrono::milliseconds>(executeEnd - executeStart).count();

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -10,20 +11,21 @@
 /*
  * OverlayConfig
  * -------------
- * Represents node metadata and tree-overlay topology for the distributed system.
+ * Represents node metadata and directed overlay topology for the distributed system.
  *
  * Responsibilities:
  * - store node metadata
- * - store tree parent/children relationships
+ * - store directed outgoing edges
  * - support node lookup
- * - support subtree / descendant traversal
+ * - support descendant traversal
  * - support file ownership lookup
- * - validate that the configured topology is a usable tree
+ * - validate that the configured topology is reachable and acyclic
  *
  * Design notes:
  * - topology lives only in this class
  * - NodeInfo should not store neighbors
- * - ownership still comes from NodeInfo::ownedFiles for now
+ * - a node may have multiple incoming edges in the overlay
+ * - forwarding should use outgoing edges only
  */
 class OverlayConfig
 {
@@ -46,21 +48,25 @@ public:
     }
 
     /*
-     * Set children for a node in the tree.
-     * This is the primary topology API for the tree overlay.
-     *
-     * Example:
-     *   setChildren("A", {"B", "C"});
-     *   setChildren("B", {"D", "E"});
+     * Set outgoing neighbors for a node in the directed overlay.
      */
     void setChildren(const std::string &nodeId,
                      const std::vector<std::string> &children)
     {
+        auto oldIt = children_.find(nodeId);
+        if (oldIt != children_.end())
+        {
+            for (const auto &oldChildId : oldIt->second)
+            {
+                removeIncomingEdge(oldChildId, nodeId);
+            }
+        }
+
         children_[nodeId] = children;
 
         for (const auto &childId : children)
         {
-            parent_[childId] = nodeId;
+            addIncomingEdge(childId, nodeId);
         }
     }
 
@@ -91,6 +97,7 @@ public:
         {
             return nullptr;
         }
+
         return &it->second;
     }
 
@@ -147,21 +154,35 @@ public:
     }
 
     /*
-     * Get the parent ID of a node.
-     * Returns empty string if no parent exists.
+     * Get one incoming parent ID for compatibility with older code.
      */
     std::string getParentId(const std::string &nodeId) const
     {
-        auto it = parent_.find(nodeId);
-        if (it == parent_.end())
+        auto it = parents_.find(nodeId);
+        if (it == parents_.end() || it->second.empty())
         {
             return "";
         }
+
+        return it->second.front();
+    }
+
+    /*
+     * Get all incoming parent IDs for a node.
+     */
+    std::vector<std::string> getParentIds(const std::string &nodeId) const
+    {
+        auto it = parents_.find(nodeId);
+        if (it == parents_.end())
+        {
+            return {};
+        }
+
         return it->second;
     }
 
     /*
-     * Get the current node's parent ID.
+     * Get one incoming parent ID for the current node.
      */
     std::string getSelfParentId() const
     {
@@ -169,8 +190,7 @@ public:
     }
 
     /*
-     * Get child node IDs for a node.
-     * Returns empty vector if none.
+     * Get directed outgoing child/neighbor node IDs for a node.
      */
     std::vector<std::string> getChildren(const std::string &nodeId) const
     {
@@ -179,11 +199,12 @@ public:
         {
             return {};
         }
+
         return it->second;
     }
 
     /*
-     * Get child node IDs for the current node.
+     * Get directed outgoing child/neighbor node IDs for the current node.
      */
     std::vector<std::string> getSelfChildren() const
     {
@@ -191,7 +212,7 @@ public:
     }
 
     /*
-     * Returns true if node has no children.
+     * Returns true if node has no outgoing edges.
      */
     bool isLeaf(const std::string &nodeId) const
     {
@@ -200,7 +221,7 @@ public:
     }
 
     /*
-     * Returns true if the current node has no children.
+     * Returns true if the current node has no outgoing edges.
      */
     bool isSelfLeaf() const
     {
@@ -217,35 +238,35 @@ public:
     }
 
     /*
-     * Collect all descendants of the given node recursively.
-     *
-     * Example:
-     * If A -> {B, C}, B -> {D, E}
-     * collectDescendants("A") returns {B, D, E, C}
+     * Collect all reachable descendants of the given node without duplicates.
      */
     std::vector<std::string> collectDescendants(const std::string &nodeId) const
     {
         std::vector<std::string> result;
-        collectDescendantsRecursive(nodeId, result);
+        std::unordered_set<std::string> visited;
+        visited.insert(nodeId);
+
+        collectDescendantsRecursive(nodeId, result, visited);
         return result;
     }
 
     /*
-     * Collect the full subtree rooted at nodeId, including nodeId itself.
-     *
-     * Example:
-     * collectSubtree("B") returns {B, D, E}
+     * Collect the reachable overlay region rooted at nodeId, including nodeId itself.
      */
     std::vector<std::string> collectSubtree(const std::string &nodeId) const
     {
         std::vector<std::string> result;
+        std::unordered_set<std::string> visited;
+
         result.push_back(nodeId);
-        collectDescendantsRecursive(nodeId, result);
+        visited.insert(nodeId);
+
+        collectDescendantsRecursive(nodeId, result, visited);
         return result;
     }
 
     /*
-     * Collect subtree for the current node.
+     * Collect reachable overlay region for the current node.
      */
     std::vector<std::string> collectSelfSubtree() const
     {
@@ -253,7 +274,7 @@ public:
     }
 
     /*
-     * Return worker node IDs (all non-entry nodes).
+     * Return worker node IDs, meaning all non-entry nodes.
      */
     std::vector<std::string> getWorkerNodeIds() const
     {
@@ -296,6 +317,7 @@ public:
         {
             return {};
         }
+
         return node->ownedFiles;
     }
 
@@ -308,16 +330,7 @@ public:
     }
 
     /*
-     * Validate configuration.
-     *
-     * Checks:
-     * - self node exists if selfNodeId is set
-     * - exactly one entry node exists
-     * - every child reference points to an existing node
-     * - no node has more than one parent
-     * - root has no parent
-     * - all nodes are reachable from root
-     * - no duplicate file ownership
+     * Validate directed overlay configuration.
      */
     bool validate() const
     {
@@ -347,11 +360,6 @@ public:
             return false;
         }
 
-        if (parent_.find(entry->nodeId) != parent_.end())
-        {
-            return false; // root should not have a parent
-        }
-
         std::unordered_set<std::string> ownedFilesSeen;
         for (const auto &[nodeId, node] : nodes_)
         {
@@ -360,7 +368,7 @@ public:
             {
                 if (!ownedFilesSeen.insert(file).second)
                 {
-                    return false; // duplicate file ownership
+                    return false;
                 }
             }
         }
@@ -382,52 +390,93 @@ public:
 
                 if (!localSeen.insert(childId).second)
                 {
-                    return false; // duplicate child in same list
+                    return false;
                 }
             }
         }
 
-        std::unordered_set<std::string> visited;
-        if (!dfsValidateReachability(entry->nodeId, visited))
+        std::unordered_set<std::string> reachable;
+        collectReachable(entry->nodeId, reachable);
+
+        if (reachable.size() != nodes_.size())
         {
             return false;
         }
 
-        if (visited.size() != nodes_.size())
+        std::unordered_set<std::string> visited;
+        std::unordered_set<std::string> activeStack;
+
+        if (hasCycle(entry->nodeId, visited, activeStack))
         {
-            return false; // disconnected topology
+            return false;
         }
 
         return true;
     }
 
-    std::string endpointFor(const std::string& nodeId) const {
+    /*
+     * Return gRPC endpoint for a node ID.
+     */
+    std::string endpointFor(const std::string &nodeId) const
+    {
         auto it = nodes_.find(nodeId);
-        if (it == nodes_.end()) {
+        if (it == nodes_.end())
+        {
             return "";
         }
 
-        const NodeInfo& node = it->second;
+        const NodeInfo &node = it->second;
         return node.host + ":" + std::to_string(node.port);
     }
 
-    std::vector<std::string> neighborNodeIds(const std::string& nodeId) const {
-        std::vector<std::string> result;
-
-        auto it = children_.find(nodeId);
-        if (it == children_.end()) {
-            return result;
-        }
-
-        return it->second;
+    /*
+     * Return outgoing neighbor IDs for a node.
+     */
+    std::vector<std::string> neighborNodeIds(const std::string &nodeId) const
+    {
+        return getChildren(nodeId);
     }
 
 private:
     /*
-     * Recursive helper to collect descendants.
+     * Add one incoming edge to the multi-parent index.
+     */
+    void addIncomingEdge(const std::string &childId, const std::string &parentId)
+    {
+        auto &parents = parents_[childId];
+
+        if (std::find(parents.begin(), parents.end(), parentId) == parents.end())
+        {
+            parents.push_back(parentId);
+        }
+    }
+
+    /*
+     * Remove one incoming edge from the multi-parent index.
+     */
+    void removeIncomingEdge(const std::string &childId, const std::string &parentId)
+    {
+        auto it = parents_.find(childId);
+        if (it == parents_.end())
+        {
+            return;
+        }
+
+        auto &parents = it->second;
+        parents.erase(std::remove(parents.begin(), parents.end(), parentId), parents.end());
+
+        if (parents.empty())
+        {
+            parents_.erase(it);
+        }
+    }
+
+    /*
+     * Recursive helper to collect descendants without revisiting shared nodes.
      */
     void collectDescendantsRecursive(const std::string &nodeId,
-                                     std::vector<std::string> &out) const
+                                     std::vector<std::string> &out,
+                                     std::unordered_set<std::string> &visited) const
     {
         auto it = children_.find(nodeId);
         if (it == children_.end())
@@ -437,37 +486,73 @@ private:
 
         for (const auto &childId : it->second)
         {
+            if (!visited.insert(childId).second)
+            {
+                continue;
+            }
+
             out.push_back(childId);
-            collectDescendantsRecursive(childId, out);
+            collectDescendantsRecursive(childId, out, visited);
         }
     }
 
     /*
-     * DFS used for validation and cycle detection.
+     * Collect reachable nodes from entry without treating shared nodes as invalid.
      */
-    bool dfsValidateReachability(const std::string &nodeId,
-                                 std::unordered_set<std::string> &visited) const
+    void collectReachable(const std::string &nodeId,
+                          std::unordered_set<std::string> &reachable) const
     {
-        if (!visited.insert(nodeId).second)
+        if (!reachable.insert(nodeId).second)
         {
-            return false; // cycle or repeated visit
+            return;
         }
 
         auto it = children_.find(nodeId);
         if (it == children_.end())
         {
-            return true;
+            return;
         }
 
         for (const auto &childId : it->second)
         {
-            if (!dfsValidateReachability(childId, visited))
+            collectReachable(childId, reachable);
+        }
+    }
+
+    /*
+     * Detect cycles using a recursion stack.
+     */
+    bool hasCycle(const std::string &nodeId,
+                  std::unordered_set<std::string> &visited,
+                  std::unordered_set<std::string> &activeStack) const
+    {
+        if (activeStack.find(nodeId) != activeStack.end())
+        {
+            return true;
+        }
+
+        if (visited.find(nodeId) != visited.end())
+        {
+            return false;
+        }
+
+        visited.insert(nodeId);
+        activeStack.insert(nodeId);
+
+        auto it = children_.find(nodeId);
+        if (it != children_.end())
+        {
+            for (const auto &childId : it->second)
             {
-                return false;
+                if (hasCycle(childId, visited, activeStack))
+                {
+                    return true;
+                }
             }
         }
 
-        return true;
+        activeStack.erase(nodeId);
+        return false;
     }
 
     /*
@@ -498,14 +583,14 @@ private:
     std::unordered_map<std::string, NodeInfo> nodes_;
 
     /*
-     * parent -> children
+     * node -> outgoing neighbors
      */
     std::unordered_map<std::string, std::vector<std::string>> children_;
 
     /*
-     * child -> parent
+     * node -> incoming parents
      */
-    std::unordered_map<std::string, std::string> parent_;
+    std::unordered_map<std::string, std::vector<std::string>> parents_;
 
     /*
      * sourceFile -> owner nodeId

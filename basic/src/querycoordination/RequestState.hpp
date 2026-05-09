@@ -36,6 +36,12 @@ struct WorkerProgress
 
     // Whether this worker has already been fully exhausted
     bool completed = false;
+
+    // Remote request ID returned by a child node after submitSubQuery.
+    std::string remoteRequestId;
+
+    // Prevents submitting the same child query more than once.
+    bool submitted = false;
 };
 
 /*
@@ -83,6 +89,13 @@ public:
     void setNextUnreadIndex(std::size_t index);
 
     /*
+     * Fair fetch scheduling
+     */
+    std::size_t getFetchRound() const;
+    void advanceFetchRound();
+    bool shouldFetchRemoteFirst() const;
+
+    /*
      * Worker progress tracking
      */
     std::size_t getExpectedWorkers() const;
@@ -120,6 +133,11 @@ private:
      * Cursor into aggregatedResult_.matchedRows for chunked delivery.
      */
     std::size_t nextUnreadIndex_ = 0;
+
+    /*
+     * Alternates local-first and remote-first fetching to improve fairness.
+     */
+    std::size_t fetchRound_ = 0;
 
     /*
      * Progress tracking for distributed execution.

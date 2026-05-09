@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -46,8 +47,8 @@ public:
 public:
     QueryCoordinator();
 
-    QueryCoordinator(const std::string& selfNodeId,
-                     const OverlayConfig& overlay,
+    QueryCoordinator(const std::string &selfNodeId,
+                     const OverlayConfig &overlay,
                      std::shared_ptr<GrpcRemoteQueryClient> client)
         : remoteClient_(std::move(client)),
           overlay_(&overlay),
@@ -177,6 +178,36 @@ private:
     std::string ensureQueryId(QueryRequest &request);
 
     /*
+     * Choose a safe chunk size for the next fetch based on caller request and coordinator pressure.
+     */
+    std::size_t chooseAdaptiveChunkSize(std::size_t requestedMaxRows) const;
+
+    /*
+     * Estimate coordinator pressure from cached request/result state.
+     */
+    double getCoordinatorPressureRatio() const;
+
+    /*
+     * Initializes per-worker progress for an EXECUTE request without fetching all results immediately.
+     */
+    void initializeExecuteProgress(RequestState &state, const QueryRequest &request);
+
+    /*
+     * Fetches one local worker chunk and appends it to the request's cached result window.
+     */
+    bool fetchLocalExecuteChunk(RequestState &state, std::size_t maxRows);
+
+    /*
+     * Fetches one remote child chunk per active child and appends it to the cached result window.
+     */
+    bool fetchRemoteExecuteChunks(RequestState &state, std::size_t maxRows);
+
+    /*
+     * Ensures the cached result window has data by pulling the next local/remote chunks on demand.
+     */
+    bool fetchNextExecuteChunks(RequestState &state, std::size_t maxRows);
+
+    /*
      * Materialize TaxiTrip rows for RPC from cached RowRef chunk.
      *
      * This assumes WorkerNode can materialize a RowRef into a TaxiTrip,
@@ -204,6 +235,6 @@ private:
     std::size_t nextQuerySeq_ = 1;
 
     std::shared_ptr<GrpcRemoteQueryClient> remoteClient_;
-    const OverlayConfig* overlay_ = nullptr;
+    const OverlayConfig *overlay_ = nullptr;
     std::string selfNodeId_;
 };

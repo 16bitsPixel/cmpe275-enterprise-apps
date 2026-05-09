@@ -1,0 +1,4 @@
+Max Rows per Fetch,Mean Fetch Calls,Mean Fetch Time (ms),Avg Fetch Latency (ms),Sources Observed
+10,40,1865.88,46.65,"A,B,C,D,E,F,G,H,I"
+50,8,402.04,50.25,"A,B,C,G,H,I"
+100,4,206.1,51.53,"A,B,G,H"

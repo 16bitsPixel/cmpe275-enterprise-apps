@@ -4,22 +4,22 @@
 
 #include "../transport/QueryProtoConverters.hpp"
 
-QueryServiceImpl::QueryServiceImpl(const std::string& selfNodeId,
-                                   QueryCoordinator& coordinator)
+QueryServiceImpl::QueryServiceImpl(const std::string &selfNodeId,
+                                   QueryCoordinator &coordinator)
     : selfNodeId_(selfNodeId),
       coordinator_(coordinator) {}
 
 grpc::Status QueryServiceImpl::SubmitQuery(
-    grpc::ServerContext*,
-    const mini2::query::SubmitQueryRequest* request,
-    mini2::query::SubmitQueryReply* response) {
+    grpc::ServerContext *,
+    const mini2::query::SubmitQueryRequest *request,
+    mini2::query::SubmitQueryReply *response)
+{
 
     QueryRequest localReq = QueryProtoConverters::fromProtoSubmitQueryRequest(*request);
     std::string requestId = coordinator_.submitClientQuery(localReq);
 
     QueryProtoConverters::fillSubmitQueryReply(
-        true, requestId, selfNodeId_, "accepted", response
-    );
+        true, requestId, selfNodeId_, "accepted", response);
 
     std::cout << "[rpc] SubmitQuery node=" << selfNodeId_
               << " request_id=" << requestId << "\n";
@@ -27,15 +27,16 @@ grpc::Status QueryServiceImpl::SubmitQuery(
     return grpc::Status::OK;
 }
 
+// Handles client chunk fetches by delegating max_rows to the coordinator chunking logic.
 grpc::Status QueryServiceImpl::FetchChunk(
-    grpc::ServerContext*,
-    const mini2::query::FetchChunkRequest* request,
-    mini2::query::FetchChunkReply* response) {
+    grpc::ServerContext *,
+    const mini2::query::FetchChunkRequest *request,
+    mini2::query::FetchChunkReply *response)
+{
 
     auto r = coordinator_.fetchChunkForRpc(
         request->request_id(),
-        static_cast<std::size_t>(request->max_rows())
-    );
+        static_cast<std::size_t>(request->max_rows()));
 
     response->set_found(r.found);
     response->set_request_id(r.requestId);
@@ -49,7 +50,8 @@ grpc::Status QueryServiceImpl::FetchChunk(
         *response->add_rows() = QueryProtoConverters::toProtoTripRow(trip, selfNodeId_);
     }
     */
-    for (std::size_t i = 0; i < r.trips.size(); ++i) {
+    for (std::size_t i = 0; i < r.trips.size(); ++i)
+    {
         const std::string source = (i < r.sources.size()) ? r.sources[i] : selfNodeId_;
         *response->add_rows() = QueryProtoConverters::toProtoTripRow(r.trips[i], source);
     }
@@ -64,16 +66,16 @@ grpc::Status QueryServiceImpl::FetchChunk(
 }
 
 grpc::Status QueryServiceImpl::CancelQuery(
-    grpc::ServerContext*,
-    const mini2::query::CancelQueryRequest* request,
-    mini2::query::CancelQueryReply* response) {
+    grpc::ServerContext *,
+    const mini2::query::CancelQueryRequest *request,
+    mini2::query::CancelQueryReply *response)
+{
 
     std::string message;
     bool ok = coordinator_.cancel(request->request_id(), message);
 
     QueryProtoConverters::fillCancelQueryReply(
-        ok, request->request_id(), selfNodeId_, message, response
-    );
+        ok, request->request_id(), selfNodeId_, message, response);
 
     std::cout << "[rpc] CancelQuery node=" << selfNodeId_
               << " request_id=" << request->request_id()
@@ -83,16 +85,16 @@ grpc::Status QueryServiceImpl::CancelQuery(
 }
 
 grpc::Status QueryServiceImpl::SubmitSubQuery(
-    grpc::ServerContext*,
-    const mini2::query::SubmitSubQueryRequest* request,
-    mini2::query::SubmitSubQueryReply* response) {
+    grpc::ServerContext *,
+    const mini2::query::SubmitSubQueryRequest *request,
+    mini2::query::SubmitSubQueryReply *response)
+{
 
     QueryRequest localReq = QueryProtoConverters::fromProtoSubmitSubQueryRequest(*request);
     std::string requestId = coordinator_.submitSubQuery(localReq, request->parent_request_id());
 
     QueryProtoConverters::fillSubmitSubQueryReply(
-        true, requestId, selfNodeId_, "accepted", response
-    );
+        true, requestId, selfNodeId_, "accepted", response);
 
     std::cout << "[rpc] SubmitSubQuery node=" << selfNodeId_
               << " parent_request_id=" << request->parent_request_id()
@@ -102,15 +104,16 @@ grpc::Status QueryServiceImpl::SubmitSubQuery(
     return grpc::Status::OK;
 }
 
+// Handles child/subquery chunk fetches using the same coordinator chunking path.
 grpc::Status QueryServiceImpl::FetchSubChunk(
-    grpc::ServerContext*,
-    const mini2::query::FetchSubChunkRequest* request,
-    mini2::query::FetchSubChunkReply* response) {
+    grpc::ServerContext *,
+    const mini2::query::FetchSubChunkRequest *request,
+    mini2::query::FetchSubChunkReply *response)
+{
 
     auto r = coordinator_.fetchChunkForRpc(
         request->request_id(),
-        static_cast<std::size_t>(request->max_rows())
-    );
+        static_cast<std::size_t>(request->max_rows()));
 
     response->set_found(r.found);
     response->set_request_id(r.requestId);
@@ -124,7 +127,8 @@ grpc::Status QueryServiceImpl::FetchSubChunk(
         *response->add_rows() = QueryProtoConverters::toProtoTripRow(trip, selfNodeId_);
     }
         */
-    for (std::size_t i = 0; i < r.trips.size(); ++i) {
+    for (std::size_t i = 0; i < r.trips.size(); ++i)
+    {
         const std::string source = (i < r.sources.size()) ? r.sources[i] : selfNodeId_;
         *response->add_rows() = QueryProtoConverters::toProtoTripRow(r.trips[i], source);
     }
@@ -139,16 +143,16 @@ grpc::Status QueryServiceImpl::FetchSubChunk(
 }
 
 grpc::Status QueryServiceImpl::CancelSubQuery(
-    grpc::ServerContext*,
-    const mini2::query::CancelSubQueryRequest* request,
-    mini2::query::CancelSubQueryReply* response) {
+    grpc::ServerContext *,
+    const mini2::query::CancelSubQueryRequest *request,
+    mini2::query::CancelSubQueryReply *response)
+{
 
     std::string message;
     bool ok = coordinator_.cancel(request->request_id(), message);
 
     QueryProtoConverters::fillCancelSubQueryReply(
-        ok, request->request_id(), selfNodeId_, message, response
-    );
+        ok, request->request_id(), selfNodeId_, message, response);
 
     std::cout << "[rpc] CancelSubQuery node=" << selfNodeId_
               << " request_id=" << request->request_id()

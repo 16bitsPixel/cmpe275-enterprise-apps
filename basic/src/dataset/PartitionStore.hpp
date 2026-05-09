@@ -2,21 +2,40 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <string>
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#include <iostream> // Include for logging
 
 /*
  * FileMetadata
  * ------------
  * Lightweight metadata for one CSV file assigned to a worker.
+ *
+ * Optimization fields:
+ * - fileSizeBytes = physical shard weight
+ * - tripCount = logical shard weight
  */
 struct FileMetadata
 {
     std::string filePath;
+
+    /*
+     * Physical weight of this shard.
+     */
     std::uint64_t fileSizeBytes = 0;
+
+    /*
+     * Logical weight of this shard.
+     * This is the number of non-header CSV rows/trips.
+     */
+    std::uint64_t tripCount = 0;
+
+    /*
+     * Kept for compatibility with existing code.
+     * For this optimization, this should match tripCount.
+     */
     std::size_t estimatedRows = 0;
 
     /*
@@ -45,6 +64,12 @@ struct FileMetadata
         if (filePath.empty())
             return false;
 
+        if (fileSizeBytes == 0)
+            return false;
+
+        if (tripCount == 0)
+            return false;
+
         if (hasTripDistanceRange && minTripDistance > maxTripDistance)
             return false;
 
@@ -68,13 +93,13 @@ public:
     explicit PartitionStore(std::string shardId)
         : shardId_(std::move(shardId))
     {
-        std::cout << "PartitionStore created for shard: " << shardId_ << "\n"; // Log shard creation
+        std::cout << "PartitionStore created for shard: " << shardId_ << "\n";
     }
 
     void setShardId(const std::string &shardId)
     {
         shardId_ = shardId;
-        std::cout << "Shard ID set to: " << shardId_ << "\n"; // Log shard ID set
+        std::cout << "Shard ID set to: " << shardId_ << "\n";
     }
 
     const std::string &shardId() const
@@ -85,13 +110,13 @@ public:
     void reserveFiles(std::size_t n)
     {
         files_.reserve(n);
-        std::cout << "Reserved space for " << n << " files.\n"; // Log file reservation
+        std::cout << "Reserved space for " << n << " files.\n";
     }
 
     void clear()
     {
         files_.clear();
-        std::cout << "Partition store cleared.\n"; // Log clearing the store
+        std::cout << "Partition store cleared.\n";
     }
 
     bool empty() const
@@ -111,13 +136,37 @@ public:
 
     void addFile(const FileMetadata &file)
     {
-        std::cout << "Adding file to store (move): " << file.filePath << " (" << file.fileSizeBytes << " bytes)" << std::endl;
-        files_.push_back(file);
+        FileMetadata copy = file;
+
+        /*
+         * Keep old estimatedRows-based code working.
+         */
+        if (copy.estimatedRows == 0 && copy.tripCount > 0)
+            copy.estimatedRows = static_cast<std::size_t>(copy.tripCount);
+
+        std::cout << "Adding file to store: "
+                  << copy.filePath
+                  << " (" << copy.fileSizeBytes << " bytes, "
+                  << copy.tripCount << " trips)"
+                  << std::endl;
+
+        files_.push_back(copy);
     }
 
     void addFile(FileMetadata &&file)
     {
-        std::cout << "Adding file to store (move): " << file.filePath << " (" << file.fileSizeBytes << " bytes)" << std::endl;
+        /*
+         * Keep old estimatedRows-based code working.
+         */
+        if (file.estimatedRows == 0 && file.tripCount > 0)
+            file.estimatedRows = static_cast<std::size_t>(file.tripCount);
+
+        std::cout << "Adding file to store: "
+                  << file.filePath
+                  << " (" << file.fileSizeBytes << " bytes, "
+                  << file.tripCount << " trips)"
+                  << std::endl;
+
         files_.push_back(std::move(file));
     }
 
@@ -137,7 +186,22 @@ public:
 
         for (const auto &file : files_)
         {
-            total += file.estimatedRows;
+            if (file.estimatedRows > 0)
+                total += file.estimatedRows;
+            else
+                total += static_cast<std::size_t>(file.tripCount);
+        }
+
+        return total;
+    }
+
+    std::uint64_t totalTripCount() const
+    {
+        std::uint64_t total = 0;
+
+        for (const auto &file : files_)
+        {
+            total += file.tripCount;
         }
 
         return total;
@@ -163,7 +227,7 @@ public:
         {
             if (!file.isValid())
             {
-                std::cout << "Invalid file detected: " << file.filePath << "\n"; // Log invalid file
+                std::cout << "Invalid file detected: " << file.filePath << "\n";
                 return false;
             }
 
@@ -171,7 +235,7 @@ public:
 
             if (!inserted.second)
             {
-                std::cout << "Duplicate file detected: " << file.filePath << "\n"; // Log duplicate file
+                std::cout << "Duplicate file detected: " << file.filePath << "\n";
                 return false;
             }
         }
