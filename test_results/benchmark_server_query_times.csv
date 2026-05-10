@@ -1,0 +1,6 @@
+Query Case,Filter,Mean Submit Time (ms),Mean Server Fetch-All Time (ms)
+Q1,No filter,14.709,3.292
+Q2,Payment type = 1,14.876,3.242
+Q3,Distance 0-1 mile,20.99,3.24
+Q4,Total $20-$50,19.415,3.196
+Q5,Combined filter,17.878,3.24
