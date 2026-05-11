@@ -1,4 +1,4 @@
-# NYC Yellow Taxi Trip Records – Streaming vs In-Memory Query Engine
+# Distributed Query Engine: NYC Yellow Taxi Trip Records
 
 ## Authors
 
